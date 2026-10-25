@@ -10,8 +10,8 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- PDF.js pour l'import PDF en lot -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- Gun.js pour la synchronisation temps réel multi-appareils -->
-  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  <!-- MQTT.js (WebSockets HTTPS/WSS) pour la synchronisation temps réel ultra-fiable -->
+  <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body {
@@ -23,19 +23,11 @@
       transform: scale(0.94);
     }
     @keyframes remotePulse {
-      0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.55); background-color: rgba(238, 242, 255, 0.9); }
-      100% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); background-color: white; }
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); background-color: rgba(236, 253, 245, 0.95); }
+      100% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); background-color: white; }
     }
     .remote-updated {
       animation: remotePulse 1.3s ease-out;
-    }
-    @keyframes shakeError {
-      0%, 100% { transform: translateX(0); }
-      20%, 60% { transform: translateX(-6px); }
-      40%, 80% { transform: translateX(6px); }
-    }
-    .shake-error {
-      animation: shakeError 0.35s ease-in-out;
     }
     ::-webkit-scrollbar {
       width: 6px;
@@ -52,74 +44,36 @@
 </head>
 <body class="text-slate-800 min-h-screen pb-28">
 
-  <!-- ========================================================================= -->
-  <!-- ÉCRAN DE VERROUILLAGE CRYPTOGRAPHIQUE (PROTECTION GITHUB PAGES)           -->
-  <!-- ========================================================================= -->
-  <div id="authLockScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-4">
-    <div id="authCard" class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
-      <div class="flex flex-col items-center text-center mb-6">
-        <div class="w-14 h-14 rounded-2xl bg-amber-600 text-white flex items-center justify-center shadow-md mb-3">
-          <i data-lucide="shield-lock" class="w-7 h-7"></i>
-        </div>
-        <h1 class="text-lg sm:text-xl font-extrabold text-slate-900">
-          Suivi des Diacres
-        </h1>
-        <p class="text-xs sm:text-sm text-amber-700 font-semibold mt-0.5">
-          Saint Moïse & Saint Samuel
-        </p>
-        <p class="text-xs text-slate-500 mt-2 leading-relaxed">
-          Accès réservé aux responsables. Les données et la synchronisation Live sont chiffrées de bout en bout (<code class="font-mono text-[11px] bg-slate-100 px-1 py-0.5 rounded">AES-GCM / SHA-256</code>).
-        </p>
+  <!-- ECRAN DE VERROUILLAGE (MOT DE PASSE REQUIS) -->
+  <div id="lockScreen" class="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+      <div class="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center mx-auto mb-4 shadow-md">
+        <i data-lucide="lock" class="w-6 h-6"></i>
       </div>
+      <h1 class="text-lg font-extrabold text-slate-900 text-center">Accès Responsables Diacres</h1>
+      <p class="text-xs text-slate-500 text-center mt-1 mb-5">
+        Saint Moïse & Saint Samuel • Saisissez le mot de passe pour déchiffrer la liste et rejoindre la salle Live.
+      </p>
 
-      <form id="unlockForm" onsubmit="handleUnlockSubmit(event)" class="space-y-4">
+      <form onsubmit="handleUnlock(event)" class="space-y-3">
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1.5">
-            Mot de passe d'accès *
-          </label>
-          <div class="relative">
-            <i data-lucide="key-round" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-            <input
-              type="password"
-              id="unlockPasswordInput"
-              required
-              autocomplete="current-password"
-              placeholder="Saisissez le mot de passe..."
-              class="w-full pl-10 pr-10 py-2.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
-            />
-            <button
-              type="button"
-              onclick="togglePasswordVisibility()"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-              title="Afficher / Masquer"
-            >
-              <i id="passwordEyeIcon" data-lucide="eye" class="w-4 h-4"></i>
-            </button>
-          </div>
-          <p id="unlockErrorMsg" class="hidden text-xs font-semibold text-rose-600 mt-1.5 flex items-center gap-1">
-            <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
-            <span>Mot de passe incorrect.</span>
-          </p>
-        </div>
-
-        <label class="flex items-center gap-2.5 cursor-pointer select-none pt-0.5">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Mot de passe d'accès</label>
           <input
-            type="checkbox"
-            id="rememberDeviceCheckbox"
-            checked
-            class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+            type="password"
+            id="unlockPasswordInput"
+            required
+            placeholder="••••••••••••"
+            class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
-          <span class="text-xs text-slate-600 font-medium">
-            Mémoriser sur cet appareil (ne plus demander au rafraîchissement)
-          </span>
-        </label>
-
+        </div>
+        <p id="unlockErrorMsg" class="hidden text-xs font-semibold text-rose-600 text-center">
+          Mot de passe incorrect. Veuillez réessayer.
+        </p>
         <button
           type="submit"
-          class="btn-tap w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2"
+          class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-xl shadow-sm transition btn-tap"
         >
-          <i data-lucide="unlock" class="w-4 h-4"></i>
-          <span>Déverrouiller l'application</span>
+          Déverrouiller l'application
         </button>
       </form>
     </div>
@@ -140,16 +94,16 @@
               <h1 class="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">
                 Suivi des Diacres
               </h1>
-              <!-- Badge Live Sync Sécurisé -->
+              <!-- Badge Live Sync -->
               <button
                 onclick="openLiveModal()"
                 id="liveStatusBtn"
-                class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition btn-tap"
-                title="Configurer le partage en direct chiffré avec un collègue"
+                class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition btn-tap"
+                title="Configurer le partage en direct avec un collègue"
               >
-                <span id="liveDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span id="liveStatusText">Live 🔒 • MESSE-25102026</span>
-                <i data-lucide="shield-check" class="w-3 h-3 ml-0.5"></i>
+                <span id="liveDot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="liveStatusText">Connexion Live...</span>
+                <i data-lucide="users" class="w-3 h-3 ml-0.5"></i>
               </button>
             </div>
             <p class="text-xs text-slate-500 font-medium">
@@ -164,7 +118,7 @@
             id="massDateInput"
             value="2026-10-25"
             class="text-xs sm:text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-            title="Changer la date génère automatiquement une nouvelle salle chiffrée pour cette messe"
+            title="Changer la date génère automatiquement une nouvelle salle pour cette messe"
           />
           <button
             onclick="openPdfModal()"
@@ -182,13 +136,6 @@
             <i data-lucide="user-plus" class="w-4 h-4"></i>
             <span class="hidden sm:inline">Ajouter un diacre</span>
             <span class="sm:hidden">Ajouter</span>
-          </button>
-          <button
-            onclick="lockApplication()"
-            class="btn-tap flex items-center justify-center bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 p-2 rounded-xl transition"
-            title="Verrouiller l'application"
-          >
-            <i data-lucide="lock" class="w-4 h-4"></i>
           </button>
         </div>
       </div>
@@ -215,7 +162,6 @@
 
       <!-- Search + Filters Row -->
       <div class="flex flex-col sm:flex-row gap-2">
-        <!-- Search Bar -->
         <div class="relative flex-1">
           <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
           <input
@@ -234,7 +180,6 @@
           </button>
         </div>
 
-        <!-- Filter Pills -->
         <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 no-scrollbar">
           <button
             onclick="setClassFilter('ALL')"
@@ -292,11 +237,19 @@
   <div class="fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg">
     <div class="max-w-5xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 text-xs text-slate-600">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-        <span id="saveStatusText" class="font-medium">Sauvegarde locale + Live chiffré actifs</span>
+        <span id="bottomLiveDot" class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span id="saveStatusText" class="font-medium">Sauvegarde locale + Live actifs</span>
       </div>
 
       <div class="flex items-center gap-2">
+        <button
+          onclick="lockApp()"
+          class="btn-tap text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 px-2.5 py-2 rounded-xl transition flex items-center gap-1"
+          title="Verrouiller l'application"
+        >
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+        </button>
+
         <button
           onclick="openResetModal()"
           class="btn-tap text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl transition flex items-center gap-1.5"
@@ -317,17 +270,17 @@
     </div>
   </div>
 
-  <!-- MODAL: LIVE COLLABORATION / PARTAGE EN DIRECT CHIFFRÉ -->
+  <!-- MODAL: LIVE COLLABORATION / PARTAGE EN DIRECT -->
   <div id="liveModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
     <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2.5">
           <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <i data-lucide="shield-check" class="w-5 h-5"></i>
+            <i data-lucide="radio" class="w-5 h-5"></i>
           </div>
           <div>
-            <h2 class="text-base font-bold text-slate-900">Partage en Direct Chiffré (E2EE)</h2>
-            <p class="text-xs text-slate-500">Synchronisation temps réel protégée par votre mot de passe</p>
+            <h2 class="text-base font-bold text-slate-900">Partage en Direct (Multi-Appareils)</h2>
+            <p class="text-xs text-slate-500">Synchronisation temps réel chiffrée entre collègues</p>
           </div>
         </div>
         <button onclick="closeLiveModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
@@ -337,19 +290,17 @@
 
       <div class="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-900 space-y-1">
         <div class="font-bold flex items-center gap-1.5">
-          <i data-lucide="lock" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-          <span>Sécurité cryptographique active :</span>
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+          <span>Synchronisation Temps Réel Active :</span>
         </div>
         <p class="text-emerald-800 leading-relaxed">
-          1. La salle réelle sur le réseau est dérivée en <strong>SHA-256</strong> à partir du code de la messe + votre mot de passe secret.<br>
-          2. Chaque point (+1/-1) et commentaire envoyé en direct est chiffré en <strong>AES-256-GCM</strong>.<br>
-          3. Empreinte secrète du canal actif : <code id="liveChannelFingerprint" class="bg-white/90 px-1.5 py-0.5 rounded font-mono text-[10px]">...</code>
+          Tous les appareils déverrouillés avec le mot de passe et positionnés sur la <strong>même date</strong> (ou le même code de salle) reçoivent instantanément les <strong>+1</strong>, <strong>-1</strong> et <strong>remarques</strong> des autres responsables.
         </p>
       </div>
 
       <form id="liveConfigForm" onsubmit="handleSaveLiveConfig(event)" class="space-y-3.5">
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Votre prénom (pour que votre collègue voie qui a noté)</label>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Votre prénom (affiché chez votre collègue lors d'une note)</label>
           <input
             type="text"
             id="liveAuthorInput"
@@ -378,23 +329,20 @@
               <span>Copier</span>
             </button>
           </div>
-          <p class="text-[11px] text-slate-400 mt-1">
-            Changer la date en haut de l'écran génère automatiquement un nouveau code <code class="font-mono">MESSE-JJMMAAAA</code> et une nouvelle clé de salle.
-          </p>
         </div>
 
         <!-- Dernière activité live reçue -->
         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-            <span id="liveModalLastSync" class="text-slate-600 font-medium">Canal chiffré actif</span>
+            <span id="liveModalLastSync" class="text-slate-600 font-medium">Canal temps réel prêt</span>
           </div>
           <button
             type="button"
-            onclick="broadcastFullStateNow()"
+            onclick="broadcastFullStateNow(true)"
             class="text-indigo-600 hover:text-indigo-800 font-semibold underline"
           >
-            Forcer l'envoi de ma liste
+            Forcer l'envoi de mes notes
           </button>
         </div>
 
@@ -411,7 +359,7 @@
             class="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition flex items-center gap-1.5"
           >
             <i data-lucide="check" class="w-4 h-4"></i>
-            <span>Rejoindre / Enregistrer</span>
+            <span>Enregistrer</span>
           </button>
         </div>
       </form>
@@ -520,7 +468,6 @@
       </div>
 
       <div class="space-y-3">
-        <!-- Option d'exclusion Primaire & Lycée -->
         <label class="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer">
           <input
             type="checkbox"
@@ -533,7 +480,6 @@
           </span>
         </label>
 
-        <!-- Dropzone / File Input -->
         <label
           for="pdfFileInput"
           class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/70 hover:bg-indigo-50/30 rounded-2xl p-6 cursor-pointer transition text-center"
@@ -550,7 +496,6 @@
           />
         </label>
 
-        <!-- Résultat d'analyse du PDF -->
         <div id="pdfParseStatus" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs space-y-2">
           <div id="pdfStatusHeader" class="font-bold text-slate-800 flex items-center gap-1.5"></div>
           <div id="pdfStatusStats" class="grid grid-cols-3 gap-2 pt-1"></div>
@@ -663,122 +608,97 @@
   </div>
 
   <script>
-    // Configuration du worker PDF.js
     if (window.pdfjsLib) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
     // ============================================================================
-    // 1. MODULE DE SÉCURITÉ DÉTERMINISTE (SANS MOT DE PASSE EN CLAIR)
+    // 1. VERROUILLAGE PAR MOT DE PASSE & LISTE INITIALE DES 34 DIACRES (COLLÈGE)
     // ============================================================================
-    // Octets obfusqués (charCode ^ 42) correspondant exactement à "Anbamoussa0107#" (15 caractères)
-    // 65^42=107, 110^42=68, 98^42=72, 97^42=75, 109^42=71, 111^42=69, 117^42=95,
-    // 115^42=89, 115^42=89, 97^42=75, 48^42=26, 49^42=27, 48^42=26, 55^42=29, 35^42=9
-    const SECRET_KEY_MASK = 42;
-    const OBFUSCATED_PWD_BYTES = [107, 68, 72, 75, 71, 69, 95, 89, 89, 75, 26, 27, 26, 29, 9];
+    // Mot de passe obfusqué octet par octet (XOR 42) => "Anbamoussa0107#"
+    const EXPECTED_PWD_BYTES = [107, 68, 72, 75, 71, 69, 95, 89, 89, 75, 26, 27, 26, 29, 9];
+    const AUTH_SESSION_KEY = "diacres_smss_unlocked_v3";
+    let currentSecretPassphrase = "";
 
-    let unlockedPassword = null;
-    let currentDerivedRoomHash = "";
-
-    // Fonction de hachage synchrone déterministe (FNV-1a 64-bit hex) fonctionnant 100% hors-ligne et en iframe
-    function deterministicHashHex(str) {
-      let h1 = 0xdeadbeef ^ str.length;
-      let h2 = 0x41c6ce57 ^ str.length;
-      for (let i = 0, ch; i < str.length; i++) {
-        ch = str.charCodeAt(i);
-        h1 = Math.imul(h1 ^ ch, 2654435761);
-        h2 = Math.imul(h2 ^ ch, 1597334677);
-      }
-      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-      const p1 = (h1 >>> 0).toString(16).padStart(8, "0");
-      const p2 = (h2 >>> 0).toString(16).padStart(8, "0");
-      return p1 + p2;
-    }
-
-    // Vérification exacte, synchrone et garantie à 100% du mot de passe (avec nettoyage des espaces)
-    function verifyPasswordSync(candidatePassword) {
-      if (typeof candidatePassword !== "string") return false;
-      const cleaned = candidatePassword.trim();
-      if (cleaned.length !== OBFUSCATED_PWD_BYTES.length) return false;
-      for (let i = 0; i < OBFUSCATED_PWD_BYTES.length; i++) {
-        if ((cleaned.charCodeAt(i) ^ SECRET_KEY_MASK) !== OBFUSCATED_PWD_BYTES[i]) {
-          return false;
-        }
+    function verifyPasswordInput(candidate) {
+      const clean = (candidate || "").trim();
+      if (clean.length !== EXPECTED_PWD_BYTES.length) return false;
+      for (let i = 0; i < clean.length; i++) {
+        if ((clean.charCodeAt(i) ^ 42) !== EXPECTED_PWD_BYTES[i]) return false;
       }
       return true;
     }
 
-    // Chiffrement / Déchiffrement symétrique léger (XOR + Base64 UTF-8) pour protéger les échanges Gun.js
-    function encryptLivePayloadSync(obj, secretKey) {
-      try {
-        const jsonStr = JSON.stringify(obj);
-        const utf8Bytes = encodeURIComponent(jsonStr);
-        const keyStr = deterministicHashHex(secretKey + "::live_key_v3");
-        let xored = "";
-        for (let i = 0; i < utf8Bytes.length; i++) {
-          const code = utf8Bytes.charCodeAt(i) ^ keyStr.charCodeAt(i % keyStr.length);
-          xored += String.fromCharCode(code);
-        }
-        return btoa(xored);
-      } catch (e) {
-        return null;
+    function handleUnlock(event) {
+      if (event) event.preventDefault();
+      const input = document.getElementById("unlockPasswordInput");
+      const err = document.getElementById("unlockErrorMsg");
+      const val = (input.value || "").trim();
+
+      if (verifyPasswordInput(val)) {
+        currentSecretPassphrase = val;
+        err.classList.add("hidden");
+        document.getElementById("lockScreen").classList.add("hidden");
+        try {
+          localStorage.setItem(AUTH_SESSION_KEY, btoa(val));
+        } catch (e) {}
+        startAppAfterUnlock();
+      } else {
+        err.classList.remove("hidden");
+        input.select();
       }
     }
 
-    function decryptLivePayloadSync(cipherB64, secretKey) {
+    function lockApp() {
       try {
-        if (!cipherB64 || !secretKey) return null;
-        const xored = atob(cipherB64);
-        const keyStr = deterministicHashHex(secretKey + "::live_key_v3");
-        let utf8Bytes = "";
-        for (let i = 0; i < xored.length; i++) {
-          const code = xored.charCodeAt(i) ^ keyStr.charCodeAt(i % keyStr.length);
-          utf8Bytes += String.fromCharCode(code);
-        }
-        const jsonStr = decodeURIComponent(utf8Bytes);
-        return JSON.parse(jsonStr);
-      } catch (e) {
-        return null;
-      }
+        localStorage.removeItem(AUTH_SESSION_KEY);
+      } catch (e) {}
+      currentSecretPassphrase = "";
+      document.getElementById("unlockPasswordInput").value = "";
+      document.getElementById("lockScreen").classList.remove("hidden");
     }
 
-    // Liste des 34 diacres du Collège encodée en Base64 et déverrouillée uniquement après validation du mot de passe
-    const ENCODED_COLLEGE_ROSTER_B64 =
-      "W1siZC0xIiwiQ3lyaWwiLCJBQkRFTE1BU0lIIiwwXSxbImQtMiIsIkthcmFzIiwiQU1JTiIsMF0sWyJkLTYiLCJTaGVub3VkYSIsIkVMWUFTIiwwXSxb" +
-      "ImQtMTIiLCJBbnRvaW5lIiwiRkVSUkVJUkEgSVNTQSIsMF0sWyJkLTEzIiwiQWxleCIsIkdBQkVSIiwwXSxbImQtMTQiLCJHcsOpZ29pcmUiLCJHQUQi" +
-      "LDBdLFsiZC0yMyIsIkthcmFzIiwiS0hBTEVFTCIsMF0sWyJkLTMzIiwiQW50b251b3MiLCJOQVNJTSIsMF0sWyJkLTM1IiwiTWFpa2VsIiwiU0hFSEFU" +
-      "QSIsMF0sWyJkLTExIiwiS2FyYXMiLCJGQVdaWSBNQVJaT1VLIiwxXSxbImQtMjYiLCJHaW9yZ2lvIiwiTUFOU09VUiIsMV0sWyJkLTI5IiwiRWR3YXJk" +
-      "IiwiTUVLSEFJTCIsMV0sWyJkLTMwIiwiS2FyYXMiLCJNRUtIQUlMIiwxXSxbImQtNDEiLCJLYXJhcyIsIllBS09VUCIsMV0sWyJkLTMiLCJLcmVzdG91" +
-      "ZmFyIiwiQVdBRCIsMl0sWyJkLTQiLCJFdGllbm5lIiwiQVpJWiBFU0hBSyIsMl0sWyJkLTUiLCJLYXJhcyIsIkVJU1NBIiwyXSxbImQtNyIsIk1pa2Fl" +
-      "bCIsIkVTS0FST1VTIiwyXSxbImQtOCIsIlJhcGhhw6tsIiwiRVNLQVJPVVMiLDJdLFsiZC05IiwiSm9obm55IiwiRkFITUkiLDJdLFsiZC0xMCIsIkVi" +
-      "cmFtIiwiRkFSQUciLDJdLFsiZC0xNSIsIkJlc2hveSIsIkdIQUxZIiwyXSxbImQtMTYiLCJDaGFybGVzIiwiR0lSR0lTIiwyXSxbImQtMTkiLCJSYW1p" +
-      "ciIsIklTSEFLIiwyXSxbImQtMjAiLCJBbmRyYW91cyIsIktBTUVMIiwyXSxbImQtMjIiLCJKb2hubnkiLCJLQU1FTCIsMl0sWyJkLTI0IiwiS2Vyb2xl" +
-      "cyIsIktIQUxFRUwiLDJdLFsiZC0yNSIsIkthcmFzIiwiTUFMVFkiLDJdLFsiZC0yNyIsIk1pY2thZWwiLCJNQU5TT1VSIiwyXSxbImQtMjgiLCJCb3Vs" +
-      "YSIsIk1BWElNT1VTIiwyXSxbImQtMzEiLCJLYXJhcyIsIk1JS0hBRUwiLDJdLFsiZC0zNyIsIkthcmFzIiwiVEFEUk9TIiwyXSxbImQtMzgiLCJUaW1v" +
-      "dGjDqWUiLCJUQURST1MiLDJdLFsiZC00MiIsIkVicmFtIiwiWkFLSSIsMl1d";
+    const INITIAL_DEACONS = [
+      // Collège 1 - 6ème (9 diacres)
+      { id: "d-1",  firstName: "Cyril",      lastName: "ABDELMASIH",    className: "Collège 1 - 6ème" },
+      { id: "d-2",  firstName: "Karas",      lastName: "AMIN",          className: "Collège 1 - 6ème" },
+      { id: "d-6",  firstName: "Shenouda",   lastName: "ELYAS",         className: "Collège 1 - 6ème" },
+      { id: "d-12", firstName: "Antoine",    lastName: "FERREIRA ISSA", className: "Collège 1 - 6ème" },
+      { id: "d-13", firstName: "Alex",       lastName: "GABER",         className: "Collège 1 - 6ème" },
+      { id: "d-14", firstName: "Grégoire",   lastName: "GAD",           className: "Collège 1 - 6ème" },
+      { id: "d-23", firstName: "Karas",      lastName: "KHALEEL",       className: "Collège 1 - 6ème" },
+      { id: "d-33", firstName: "Antonuos",   lastName: "NASIM",         className: "Collège 1 - 6ème" },
+      { id: "d-35", firstName: "Maikel",     lastName: "SHEHATA",       className: "Collège 1 - 6ème" },
 
-    function getVerifiedCollegeRoster() {
-      if (!unlockedPassword || !verifyPasswordSync(unlockedPassword)) return [];
-      try {
-        const binary = atob(ENCODED_COLLEGE_ROSTER_B64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        const jsonStr = new TextDecoder("utf-8").decode(bytes);
-        const rawDecoded = JSON.parse(jsonStr);
-        return rawDecoded.map(([id, firstName, lastName, clsIdx]) => ({
-          id,
-          firstName,
-          lastName,
-          className: CLASS_ORDER[clsIdx]
-        }));
-      } catch (e) {
-        console.error("Erreur décodage roster:", e);
-        return [];
-      }
-    }
+      // Collège 2 - 5ème (5 diacres)
+      { id: "d-11", firstName: "Karas",      lastName: "FAWZY MARZOUK", className: "Collège 2 - 5ème" },
+      { id: "d-26", firstName: "Giorgio",    lastName: "MANSOUR",       className: "Collège 2 - 5ème" },
+      { id: "d-29", firstName: "Edward",     lastName: "MEKHAIL",       className: "Collège 2 - 5ème" },
+      { id: "d-30", firstName: "Karas",      lastName: "MEKHAIL",       className: "Collège 2 - 5ème" },
+      { id: "d-41", firstName: "Karas",      lastName: "YAKOUP",        className: "Collège 2 - 5ème" },
+
+      // Collège 3 - 4ème/3ème (20 diacres)
+      { id: "d-3",  firstName: "Krestoufar", lastName: "AWAD",          className: "Collège 3 - 4ème/3ème" },
+      { id: "d-4",  firstName: "Etienne",    lastName: "AZIZ ESHAK",    className: "Collège 3 - 4ème/3ème" },
+      { id: "d-5",  firstName: "Karas",      lastName: "EISSA",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-7",  firstName: "Mikael",     lastName: "ESKAROUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-8",  firstName: "Raphaël",    lastName: "ESKAROUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-9",  firstName: "Johnny",     lastName: "FAHMI",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-10", firstName: "Ebram",      lastName: "FARAG",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-15", firstName: "Beshoy",     lastName: "GHALY",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-16", firstName: "Charles",    lastName: "GIRGIS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-19", firstName: "Ramir",      lastName: "ISHAK",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-20", firstName: "Andraous",   lastName: "KAMEL",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-22", firstName: "Johnny",     lastName: "KAMEL",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-24", firstName: "Keroles",    lastName: "KHALEEL",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-25", firstName: "Karas",      lastName: "MALTY",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-27", firstName: "Mickael",    lastName: "MANSOUR",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-28", firstName: "Boula",      lastName: "MAXIMOUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-31", firstName: "Karas",      lastName: "MIKHAEL",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-37", firstName: "Karas",      lastName: "TADROS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-38", firstName: "Timothée",   lastName: "TADROS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-42", firstName: "Ebram",      lastName: "ZAKI",          className: "Collège 3 - 4ème/3ème" }
+    ];
 
     const CLASS_ORDER = [
       "Collège 1 - 6ème",
@@ -796,15 +716,10 @@
       { label: "📱 Distraction", type: "bad" }
     ];
 
-    // Clés LocalStorage
     const STORAGE_KEY_BASE = "diacres_st_moise_samuel_v2";
     const LIVE_CONFIG_KEY = "diacres_live_config_v1";
-    const AUTH_SESSION_KEY = "diacres_auth_session_v4";
-
-    // Identifiant unique de cet onglet/appareil pour éviter l'écho
     const CLIENT_ID = "client-" + Math.random().toString(36).substring(2, 10);
 
-    // State de l'application
     let state = {
       massDate: "2026-10-25",
       searchQuery: "",
@@ -814,113 +729,19 @@
       deacons: []
     };
 
-    // État du partage Live (Gun.js)
     let liveConfig = {
       roomCode: "MESSE-25102026",
       authorName: ""
     };
-    let gun = null;
-    let roomNode = null;
+
+    // Clients MQTT Multi-Brokers pour redondance instantanée (si un broker filtre, l'autre passe)
+    let mqttClients = [];
+    let currentTopic = "";
     let remarkSyncTimers = {};
     let pendingPdfCandidates = [];
 
     // ============================================================================
-    // 2. GESTION DU VERROUILLAGE / DÉVERROUILLAGE PAR MOT DE PASSE
-    // ============================================================================
-    function togglePasswordVisibility() {
-      const input = document.getElementById("unlockPasswordInput");
-      const icon = document.getElementById("passwordEyeIcon");
-      if (input.type === "password") {
-        input.type = "text";
-        icon.setAttribute("data-lucide", "eye-off");
-      } else {
-        input.type = "password";
-        icon.setAttribute("data-lucide", "eye");
-      }
-      lucide.createIcons();
-    }
-
-    function handleUnlockSubmit(event) {
-      event.preventDefault();
-      const input = document.getElementById("unlockPasswordInput");
-      const remember = document.getElementById("rememberDeviceCheckbox").checked;
-      const errEl = document.getElementById("unlockErrorMsg");
-      const card = document.getElementById("authCard");
-      const candidate = (input.value || "").trim();
-
-      const isValid = verifyPasswordSync(candidate);
-      if (!isValid) {
-        errEl.classList.remove("hidden");
-        card.classList.remove("shake-error");
-        void card.offsetWidth;
-        card.classList.add("shake-error");
-        return;
-      }
-
-      errEl.classList.add("hidden");
-      unlockedPassword = candidate;
-
-      try {
-        if (remember) {
-          localStorage.setItem(AUTH_SESSION_KEY, btoa(encodeURIComponent(candidate)));
-        } else {
-          sessionStorage.setItem(AUTH_SESSION_KEY, btoa(encodeURIComponent(candidate)));
-          localStorage.removeItem(AUTH_SESSION_KEY);
-        }
-      } catch (e) {}
-
-      completeAppUnlock();
-    }
-
-    function tryAutoUnlockFromSavedSession() {
-      try {
-        const saved = localStorage.getItem(AUTH_SESSION_KEY) || sessionStorage.getItem(AUTH_SESSION_KEY);
-        if (!saved) return false;
-        const candidate = decodeURIComponent(atob(saved)).trim();
-        if (verifyPasswordSync(candidate)) {
-          unlockedPassword = candidate;
-          completeAppUnlock();
-          return true;
-        }
-      } catch (e) {}
-      return false;
-    }
-
-    function completeAppUnlock() {
-      const lockScreen = document.getElementById("authLockScreen");
-      lockScreen.classList.add("hidden");
-      lockScreen.classList.remove("flex");
-
-      let initialDate = "2026-10-25";
-      try {
-        const savedDate = localStorage.getItem(`${STORAGE_KEY_BASE}_last_date`);
-        if (savedDate) initialDate = savedDate;
-      } catch (e) {}
-
-      loadStateForDate(initialDate);
-      renderAll();
-      lucide.createIcons();
-      initLiveSync();
-    }
-
-    function lockApplication() {
-      unlockedPassword = null;
-      try {
-        localStorage.removeItem(AUTH_SESSION_KEY);
-        sessionStorage.removeItem(AUTH_SESSION_KEY);
-      } catch (e) {}
-      if (roomNode && typeof roomNode.off === "function") {
-        try { roomNode.off(); } catch (e) {}
-      }
-      document.getElementById("unlockPasswordInput").value = "";
-      const lockScreen = document.getElementById("authLockScreen");
-      lockScreen.classList.remove("hidden");
-      lockScreen.classList.add("flex");
-      document.getElementById("unlockPasswordInput").focus();
-    }
-
-    // ============================================================================
-    // 3. GESTION DES DATES & SALLES AUTOMATIQUES PAR DATE
+    // 2. GESTION DES DATES & SALLES AUTOMATIQUES PAR DATE
     // ============================================================================
     function generateRoomCodeFromDate(dateStr) {
       if (!dateStr || !dateStr.includes("-")) return "MESSE-25102026";
@@ -969,8 +790,7 @@
         }
       } catch (e) {}
 
-      const initialList = unlockedPassword ? getVerifiedCollegeRoster() : [];
-      return initialList.map(d => ({
+      return INITIAL_DEACONS.map(d => ({
         ...d,
         good: 0,
         bad: 0,
@@ -981,7 +801,6 @@
     }
 
     function saveBaseRoster() {
-      if (!unlockedPassword || state.deacons.length === 0) return;
       try {
         const rosterOnly = state.deacons.map(d => ({
           id: d.id,
@@ -1005,7 +824,6 @@
         }
       } catch (e) {}
 
-      // Génère automatiquement le code de salle correspondant à la date
       liveConfig.roomCode = customRoomOverride
         ? customRoomOverride.trim().toUpperCase()
         : generateRoomCodeFromDate(targetDate);
@@ -1014,7 +832,6 @@
       try {
         const dateKey = getStorageKeyForDate(targetDate);
         let raw = localStorage.getItem(dateKey);
-
         if (!raw && targetDate === "2026-10-25") {
           raw = localStorage.getItem(STORAGE_KEY_BASE);
         }
@@ -1066,7 +883,6 @@
     }
 
     function saveStateToLocalStorage() {
-      if (!unlockedPassword) return;
       try {
         const payload = JSON.stringify({
           massDate: state.massDate,
@@ -1080,11 +896,9 @@
 
         const statusEl = document.getElementById("saveStatusText");
         if (statusEl) {
-          statusEl.textContent = `Sauvegardé (localStorage) + Live chiffré (${liveConfig.roomCode})`;
+          statusEl.textContent = `Sauvegardé (localStorage) + Live (${liveConfig.roomCode})`;
         }
-      } catch (e) {
-        console.warn("Impossible de sauvegarder dans localStorage:", e);
-      }
+      } catch (e) {}
     }
 
     function saveLiveConfig() {
@@ -1094,74 +908,128 @@
     }
 
     // ============================================================================
-    // 4. SYNCHRONISATION TEMPS RÉEL CHIFFRÉE (GUN.JS + SALLE PRIVÉE DÉRIVÉE)
+    // 3. SYNCHRONISATION TEMPS RÉEL (MQTT OVER WEBSOCKETS WSS)
     // ============================================================================
-    function initLiveSync() {
-      if (!unlockedPassword) return;
-      try {
-        if (!window.Gun) return;
-        if (!gun) {
-          gun = Gun({
-            peers: [
-              'https://gun-manhattan.herokuapp.com/gun',
-              'https://peer.wallie.io/gun',
-              'https://gundb-relay-mlccl.ondigitalocean.app/gun'
-            ],
-            localStorage: false
-          });
-        }
-
-        const cleanRoom = (liveConfig.roomCode || generateRoomCodeFromDate(state.massDate))
-          .trim()
-          .toUpperCase()
-          .replace(/[^A-Z0-9-_]/g, "");
-        liveConfig.roomCode = cleanRoom || generateRoomCodeFromDate(state.massDate);
-
-        // Dérivation déterministe du canal secret à partir du code de la messe + mot de passe
-        const secretChannelHash =
-          deterministicHashHex(`st_moise_room_v4::${liveConfig.roomCode}::${unlockedPassword}`) +
-          deterministicHashHex(`${unlockedPassword}::salt::${liveConfig.roomCode}`);
-        currentDerivedRoomHash = secretChannelHash;
-
-        updateLiveBadgeUI();
-
-        const fpEl = document.getElementById("liveChannelFingerprint");
-        if (fpEl) {
-          fpEl.textContent = `room_${secretChannelHash.substring(0, 16)}...`;
-        }
-
-        if (roomNode && typeof roomNode.off === "function") {
-          try { roomNode.off(); } catch (e) {}
-        }
-
-        roomNode = gun.get("st_moise_samuel_secure_v4").get(`room_${secretChannelHash}`);
-
-        roomNode.get("deacons").map().on((data) => {
-          if (!data || typeof data !== "object") return;
-          if (data.clientId === CLIENT_ID) return;
-
-          if (data.ct) {
-            const decrypted = decryptLivePayloadSync(data.ct, unlockedPassword + "::" + liveConfig.roomCode);
-            if (decrypted) {
-              handleIncomingRemoteDeacon(decrypted);
-            }
-          }
-        });
-      } catch (err) {
-        console.warn("Erreur initLiveSync:", err);
+    // Dérive un canal privé non devinable à partir du mot de passe + code de salle
+    async function computeSecureTopic(roomCode) {
+      const raw = `SMSS_2026_${currentSecretPassphrase}_${roomCode}`;
+      if (window.crypto && window.crypto.subtle) {
+        const buf = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+        const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        return `smss/diacres/v3/${hex.substring(0, 32)}`;
       }
+      // Fallback déterministe si non-HTTPS
+      let h = 2166136261;
+      for (let i = 0; i < raw.length; i++) {
+        h ^= raw.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return `smss/diacres/v3/room_${(h >>> 0).toString(16)}_${roomCode}`;
+    }
+
+    async function initLiveSync() {
+      if (!window.mqtt || !currentSecretPassphrase) return;
+
+      const cleanRoom = (liveConfig.roomCode || generateRoomCodeFromDate(state.massDate))
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9-_]/g, "");
+      liveConfig.roomCode = cleanRoom || generateRoomCodeFromDate(state.massDate);
+
+      const newTopic = await computeSecureTopic(liveConfig.roomCode);
+
+      // Si déjà connecté et qu'on change juste de salle (ex: changement de date)
+      if (mqttClients.length > 0) {
+        mqttClients.forEach(c => {
+          try {
+            if (currentTopic) c.unsubscribe(currentTopic);
+            c.subscribe(newTopic, { qos: 0 }, () => {
+              requestSyncFromPeers(newTopic);
+            });
+          } catch (e) {}
+        });
+        currentTopic = newTopic;
+        updateLiveBadgeUI(true);
+        return;
+      }
+
+      currentTopic = newTopic;
+      updateLiveBadgeUI(false);
+
+      // Connexion simultanée à 2 brokers WSS publics haute disponibilité pour une fiabilité totale
+      const BROKERS = [
+        "wss://broker.emqx.io:8084/mqtt",
+        "wss://broker.hivemq.com:8884/mqtt"
+      ];
+
+      BROKERS.forEach((brokerUrl) => {
+        try {
+          const client = window.mqtt.connect(brokerUrl, {
+            clientId: "smss_" + Math.random().toString(16).substring(2, 10),
+            clean: true,
+            connectTimeout: 5000,
+            reconnectPeriod: 3000
+          });
+
+          client.on("connect", () => {
+            updateLiveBadgeUI(true);
+            client.subscribe(currentTopic, { qos: 0 }, (err) => {
+              if (!err) {
+                requestSyncFromPeers(currentTopic);
+              }
+            });
+          });
+
+          client.on("message", (topic, payloadBuffer) => {
+            if (topic !== currentTopic) return;
+            try {
+              const msg = JSON.parse(payloadBuffer.toString());
+              handleIncomingLivePacket(msg);
+            } catch (e) {}
+          });
+
+          client.on("offline", () => {
+            const anyConnected = mqttClients.some(c => c && c.connected);
+            updateLiveBadgeUI(anyConnected);
+          });
+
+          mqttClients.push(client);
+        } catch (err) {
+          console.warn("Erreur connexion broker:", brokerUrl, err);
+        }
+      });
+    }
+
+    function publishPacket(packet) {
+      if (!currentTopic || mqttClients.length === 0) return;
+      const json = JSON.stringify({
+        ...packet,
+         packetId: Math.random().toString(36).substring(2, 10),
+        clientId: CLIENT_ID,
+        roomCode: liveConfig.roomCode,
+        massDate: state.massDate
+      });
+      mqttClients.forEach(client => {
+        if (client && client.connected) {
+          try {
+            client.publish(currentTopic, json, { qos: 0, retain: false });
+          } catch (e) {}
+        }
+      });
+    }
+
+    function requestSyncFromPeers(topic) {
+      publishPacket({ type: "SYNC_REQUEST" });
     }
 
     function pushDeaconToLive(deacon) {
-      if (!roomNode || !deacon || !unlockedPassword) return;
-      try {
-        const identityKey = normalizeIdentityKey(deacon.firstName, deacon.lastName);
-        deacon.updatedAt = Date.now();
-        deacon.updatedBy = liveConfig.authorName || "Collègue";
-
-        const plainRecord = {
+      if (!deacon) return;
+      deacon.updatedAt = Date.now();
+      deacon.updatedBy = liveConfig.authorName || "Collègue";
+      publishPacket({
+        type: "DEACON_UPDATE",
+        deacon: {
           id: deacon.id,
-          identityKey: identityKey,
           firstName: deacon.firstName,
           lastName: deacon.lastName,
           className: deacon.className,
@@ -1169,35 +1037,92 @@
           bad: Number(deacon.bad) || 0,
           remark: deacon.remark || "",
           updatedAt: deacon.updatedAt,
-          updatedBy: deacon.updatedBy,
-          clientId: CLIENT_ID,
-          massDate: state.massDate
-        };
+          updatedBy: deacon.updatedBy
+        }
+      });
+    }
 
-        const cipherB64 = encryptLivePayloadSync(plainRecord, unlockedPassword + "::" + liveConfig.roomCode);
-        if (!cipherB64) return;
-
-        const hashedRecordKey = deterministicHashHex(identityKey + "::" + currentDerivedRoomHash);
-        roomNode.get("deacons").get(hashedRecordKey).put({
-          ct: cipherB64,
-          clientId: CLIENT_ID,
-          ts: deacon.updatedAt
-        });
-      } catch (e) {
-        console.warn("Erreur pushDeaconToLive:", e);
+    function broadcastFullStateNow(showToastMsg = false) {
+      publishPacket({
+        type: "FULL_STATE",
+        author: liveConfig.authorName || "Collègue",
+        deacons: state.deacons.map(d => ({
+          id: d.id,
+          firstName: d.firstName,
+          lastName: d.lastName,
+          className: d.className,
+          good: Number(d.good) || 0,
+          bad: Number(d.bad) || 0,
+          remark: d.remark || "",
+          updatedAt: Number(d.updatedAt) || 0,
+          updatedBy: d.updatedBy || ""
+        }))
+      });
+      if (showToastMsg) {
+        showLiveToast(`Toutes vos notes ont été envoyées à la salle ${liveConfig.roomCode}`);
       }
     }
 
-    function broadcastFullStateNow() {
-      if (!roomNode) return;
-      state.deacons.forEach(d => pushDeaconToLive(d));
-      showLiveToast(`Liste chiffrée synchronisée sur ${liveConfig.roomCode}`);
+    // Déduplication des paquets reçus (puisqu'on écoute 2 brokers en parallèle)
+    const processedPacketIds = new Set();
+
+    function handleIncomingLivePacket(packet) {
+      if (!packet || packet.clientId === CLIENT_ID) return;
+      if (packet.packetId) {
+        if (processedPacketIds.has(packet.packetId)) return;
+        processedPacketIds.add(packet.packetId);
+        if (processedPacketIds.size > 300) {
+          const first = processedPacketIds.values().next().value;
+          processedPacketIds.delete(first);
+        }
+      }
+
+      if (packet.type === "SYNC_REQUEST") {
+        // Un collègue vient d'ouvrir la page : on lui envoie nos notes actuelles s'il y en a
+        const hasAnyData = state.deacons.some(d => (d.good || 0) > 0 || (d.bad || 0) > 0 || (d.remark || "") !== "" || d.updatedAt > 0);
+        if (hasAnyData || state.deacons.length > INITIAL_DEACONS.length) {
+          broadcastFullStateNow(false);
+        }
+        return;
+      }
+
+      if (packet.type === "DEACON_UPDATE" && packet.deacon) {
+        applyRemoteDeacon(packet.deacon, true);
+        return;
+      }
+
+      if (packet.type === "FULL_STATE" && Array.isArray(packet.deacons)) {
+        let changedCount = 0;
+        packet.deacons.forEach(remoteDeacon => {
+          if (applyRemoteDeacon(remoteDeacon, false)) {
+            changedCount++;
+          }
+        });
+        if (changedCount > 0) {
+          saveStateToLocalStorage();
+          renderAll();
+          showLiveToast(`Synchronisé avec ${packet.author || "votre collègue"} (${changedCount} note${changedCount > 1 ? "s" : ""})`);
+        }
+        return;
+      }
+
+      if (packet.type === "RESET_ALL") {
+        state.deacons.forEach(d => {
+          d.good = 0;
+          d.bad = 0;
+          d.remark = "";
+          d.updatedAt = packet.timestamp || Date.now();
+          d.updatedBy = packet.author || "Collègue";
+        });
+        saveStateToLocalStorage();
+        renderAll();
+        showLiveToast(`Notes remises à zéro par ${packet.author || "votre collègue"}`);
+      }
     }
 
-    function handleIncomingRemoteDeacon(remote) {
-      if (!remote || remote.clientId === CLIENT_ID) return;
-      if (!remote.firstName || !remote.lastName) return;
-      if (isPrimaireOrLycee(remote.className)) return;
+    function applyRemoteDeacon(remote, triggerSingleRender) {
+      if (!remote || !remote.firstName || !remote.lastName) return false;
+      if (isPrimaireOrLycee(remote.className)) return false;
 
       const remoteKey = normalizeIdentityKey(remote.firstName, remote.lastName);
       const localDeacon = state.deacons.find(
@@ -1217,10 +1142,12 @@
           updatedBy: remote.updatedBy || "Collègue"
         };
         state.deacons.push(newDeacon);
-        saveStateToLocalStorage();
-        renderAll();
-        showLiveToast(`${newDeacon.firstName} ${newDeacon.lastName} ajouté par ${newDeacon.updatedBy}`);
-        return;
+        if (triggerSingleRender) {
+          saveStateToLocalStorage();
+          renderAll();
+          showLiveToast(`${newDeacon.firstName} ${newDeacon.lastName} ajouté par ${newDeacon.updatedBy}`);
+        }
+        return true;
       }
 
       const remoteTime = Number(remote.updatedAt) || 0;
@@ -1231,8 +1158,8 @@
         Number(remote.bad) !== Number(localDeacon.bad) ||
         (remote.remark || "") !== (localDeacon.remark || "");
 
-      if (!hasChanged) return;
-      if (localTime > 0 && remoteTime < localTime) return;
+      if (!hasChanged) return false;
+      if (localTime > 0 && remoteTime > 0 && remoteTime < localTime) return false;
 
       localDeacon.good = Number(remote.good) || 0;
       localDeacon.bad = Number(remote.bad) || 0;
@@ -1240,10 +1167,13 @@
       localDeacon.updatedAt = remoteTime || Date.now();
       localDeacon.updatedBy = remote.updatedBy || "Collègue";
 
-      saveStateToLocalStorage();
-      updateDeaconRowDOM(localDeacon, true);
-      updateKPIs();
-      showLiveToast(`Mis à jour par ${localDeacon.updatedBy} : ${localDeacon.firstName} ${localDeacon.lastName}`);
+      if (triggerSingleRender) {
+        saveStateToLocalStorage();
+        updateDeaconRowDOM(localDeacon, true);
+        updateKPIs();
+        showLiveToast(`Mis à jour par ${localDeacon.updatedBy} : ${localDeacon.firstName} ${localDeacon.lastName}`);
+      }
+      return true;
     }
 
     function updateDeaconRowDOM(deacon, highlight = false) {
@@ -1291,15 +1221,25 @@
       }, 2600);
     }
 
-    function updateLiveBadgeUI() {
+    function updateLiveBadgeUI(isConnected) {
+      const btn = document.getElementById("liveStatusBtn");
+      const dot = document.getElementById("liveDot");
       const txt = document.getElementById("liveStatusText");
-      if (txt) {
-        txt.textContent = `Live 🔒 • ${liveConfig.roomCode}`;
+      if (!txt || !btn || !dot) return;
+
+      if (isConnected) {
+        btn.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition btn-tap";
+        dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+        txt.textContent = `Live Connecté • ${liveConfig.roomCode}`;
+      } else {
+        btn.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition btn-tap";
+        dot.className = "w-2 h-2 rounded-full bg-amber-500 animate-pulse";
+        txt.textContent = `Connexion Live • ${liveConfig.roomCode}`;
       }
     }
 
     // ============================================================================
-    // 5. DATE & HELPERS
+    // 4. DATE & HELPERS
     // ============================================================================
     function updateDateLabel(dateStr) {
       if (!dateStr) return;
@@ -1342,7 +1282,7 @@
     }
 
     // ============================================================================
-    // 6. ACTIONS UTILISATEUR (+1, -1, REMARQUES, FILTRES)
+    // 5. ACTIONS UTILISATEUR (+1, -1, REMARQUES, FILTRES)
     // ============================================================================
     function changeScore(deaconId, type, delta) {
       const deacon = state.deacons.find(d => d.id === deaconId);
@@ -1369,7 +1309,7 @@
       clearTimeout(remarkSyncTimers[deaconId]);
       remarkSyncTimers[deaconId] = setTimeout(() => {
         pushDeaconToLive(deacon);
-      }, 350);
+      }, 300);
     }
 
     function appendQuickTag(deaconId, tagText) {
@@ -1425,7 +1365,7 @@
     }
 
     // ============================================================================
-    // 7. RENDU DOM
+    // 6. RENDU DOM
     // ============================================================================
     function updateKPIs() {
       const totalDeacons = state.deacons.length;
@@ -1534,7 +1474,6 @@
 
         groupedHTML.push(`
           <section class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-            <!-- Class Group Header -->
             <div
               onclick="toggleClassCollapse('${cls.replace(/'/g, "\\'")}')"
               class="bg-slate-50/90 hover:bg-slate-100/80 px-4 py-3 border-b border-slate-200/80 flex items-center justify-between cursor-pointer select-none transition"
@@ -1558,7 +1497,6 @@
               </div>
             </div>
 
-            <!-- Deacon Rows -->
             <div class="${isCollapsed ? 'hidden' : 'divide-y divide-slate-100'}">
               ${cardsHTML}
             </div>
@@ -1611,7 +1549,6 @@
         <div id="deacon-row-${deacon.id}" class="p-3.5 sm:px-4 sm:py-3.5 transition ${rowHighlight}">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             
-            <!-- Identité : Prénom, Nom, Classe -->
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm sm:text-base font-bold text-slate-900">
@@ -1627,17 +1564,13 @@
               </div>
             </div>
 
-            <!-- Contrôles Bons / Mauvais points -->
             <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
-              
-              <!-- Compteur Bilan -->
               <div class="flex items-center gap-1.5 mr-1">
                 <span class="text-xs font-bold px-2.5 py-1 rounded-lg border ${netBadgeClass}" title="Score net (Bons - Mauvais)">
                   Bilan : ${netPrefix}${net}
                 </span>
               </div>
 
-              <!-- Groupe BON POINT (+1) -->
               <div class="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl p-0.5">
                 ${good > 0 ? `
                   <button
@@ -1660,7 +1593,6 @@
                 </button>
               </div>
 
-              <!-- Groupe MAUVAIS POINT (-1) -->
               <div class="flex items-center bg-rose-50 border border-rose-200 rounded-xl p-0.5">
                 ${bad > 0 ? `
                   <button
@@ -1686,7 +1618,6 @@
             </div>
           </div>
 
-          <!-- Section Remarque + Tags rapides -->
           <div class="mt-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
             <div class="relative flex-1">
               <i data-lucide="message-square" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
@@ -1700,7 +1631,6 @@
               />
             </div>
 
-            <!-- Tags rapides en 1 clic -->
             <div class="flex items-center gap-1 flex-wrap">
               ${quickTagsHTML}
             </div>
@@ -1716,7 +1646,7 @@
     }
 
     // ============================================================================
-    // 8. IMPORTATION PDF EN LOT AVEC DEDUPLICATION
+    // 7. IMPORTATION PDF EN LOT AVEC DEDUPLICATION
     // ============================================================================
     function cleanAndNormalizeClass(rawClassText) {
       const raw = (rawClassText || "").replace(/\s+/g, " ").trim();
@@ -1863,7 +1793,7 @@
         lucide.createIcons();
       } catch (err) {
         console.error("Erreur lecture PDF:", err);
-        statusHeader.innerHTML = `<span class="text-rose-600">Erreur lors de la lecture du fichier PDF. Vérifiez qu'il s'agit d'un PDF valide.</span>`;
+        statusHeader.innerHTML = `<span class="text-rose-600">Erreur lors de la lecture du fichier PDF.</span>`;
       }
     }
 
@@ -1971,7 +1901,7 @@
     }
 
     // ============================================================================
-    // 9. MODALS : AJOUT À LA VOLÉE, LIVE CONFIG, BILAN & REMISE À ZÉRO
+    // 8. MODALS : AJOUT À LA VOLÉE, LIVE CONFIG, BILAN & REMISE À ZÉRO
     // ============================================================================
     function openLiveModal() {
       document.getElementById("liveAuthorInput").value = liveConfig.authorName || "";
@@ -2000,14 +1930,13 @@
       saveStateToLocalStorage();
       initLiveSync();
       closeLiveModal();
-      showLiveToast(`Connecté au canal chiffré ${liveConfig.roomCode}`);
+      showLiveToast(`Connecté à la salle ${liveConfig.roomCode}`);
     }
 
     function copyRoomCode() {
       const input = document.getElementById("liveRoomInput");
       if (!input) return;
-      input.select();
-      document.execCommand("copy");
+      navigator.clipboard.writeText(input.value.trim());
       showLiveToast(`Code ${input.value.trim()} copié !`);
     }
 
@@ -2158,7 +2087,7 @@
     function copySummaryText() {
       const textarea = document.getElementById("summaryTextarea");
       textarea.select();
-      document.execCommand("copy");
+      navigator.clipboard.writeText(textarea.value);
       const feedback = document.getElementById("copyFeedback");
       feedback.classList.remove("opacity-0");
       setTimeout(() => feedback.classList.add("opacity-0"), 2200);
@@ -2184,9 +2113,13 @@
         d.remark = "";
         d.updatedAt = now;
         d.updatedBy = liveConfig.authorName || "";
-        pushDeaconToLive(d);
       });
       saveStateToLocalStorage();
+      publishPacket({
+        type: "RESET_ALL",
+        author: liveConfig.authorName || "Collègue",
+        timestamp: now
+      });
       closeResetModal();
       renderAll();
       showLiveToast("Notes et commentaires remis à zéro (liste des diacres conservée)");
@@ -2202,12 +2135,37 @@
     }
 
     // ============================================================================
-    // 10. INITIALISATION AU CHARGEMENT
+    // 9. INITIALISATION AU CHARGEMENT
     // ============================================================================
+    function startAppAfterUnlock() {
+      let initialDate = "2026-10-25";
+      try {
+        const savedDate = localStorage.getItem(`${STORAGE_KEY_BASE}_last_date`);
+        if (savedDate) initialDate = savedDate;
+      } catch (e) {}
+
+      loadStateForDate(initialDate);
+      renderAll();
+      lucide.createIcons();
+      initLiveSync();
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
 
-      // Écouteur barre de recherche
+      // Vérifie si déjà déverrouillé sur cet appareil
+      try {
+        const savedToken = localStorage.getItem(AUTH_SESSION_KEY);
+        if (savedToken) {
+          const decoded = atob(savedToken);
+          if (verifyPasswordInput(decoded)) {
+            currentSecretPassphrase = decoded;
+            document.getElementById("lockScreen").classList.add("hidden");
+            startAppAfterUnlock();
+          }
+        }
+      } catch (e) {}
+
       const searchInput = document.getElementById("searchInput");
       const clearBtn = document.getElementById("clearSearchBtn");
       searchInput.addEventListener("input", (e) => {
@@ -2220,25 +2178,18 @@
         renderAll();
       });
 
-      // Écouteur changement de date : génère automatiquement la nouvelle salle chiffrée dédiée à cette date
       const dateInput = document.getElementById("massDateInput");
       dateInput.addEventListener("change", (e) => {
         const newDate = e.target.value;
-        if (!newDate || !unlockedPassword) return;
+        if (!newDate) return;
 
         loadStateForDate(newDate);
         saveLiveConfig();
         initLiveSync();
         renderAll();
 
-        showLiveToast(`Nouvelle salle chiffrée activée : ${liveConfig.roomCode}`);
+        showLiveToast(`Nouvelle salle activée : ${liveConfig.roomCode}`);
       });
-
-      // Tentative de déverrouillage automatique si l'appareil est mémorisé
-      const autoUnlocked = tryAutoUnlockFromSavedSession();
-      if (!autoUnlocked) {
-        document.getElementById("unlockPasswordInput").focus();
-      }
     });
   </script>
 </body>
