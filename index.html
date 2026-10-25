@@ -1,0 +1,1982 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Suivi des Diacres — Saint Moïse & Saint Samuel</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PDF.js pour l'import PDF en lot -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Gun.js pour la synchronisation temps réel multi-appareils sans configuration -->
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f8fafc;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-tap:active {
+      transform: scale(0.94);
+    }
+    @keyframes remotePulse {
+      0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.55); background-color: rgba(238, 242, 255, 0.9); }
+      100% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); background-color: white; }
+    }
+    .remote-updated {
+      animation: remotePulse 1.3s ease-out;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="text-slate-800 min-h-screen pb-28">
+
+  <!-- HEADER STICKY -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <div class="max-w-5xl mx-auto px-3 sm:px-6 py-3">
+      
+      <!-- Top Row: Title + Actions -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center text-white shadow-sm shrink-0">
+            <i data-lucide="church" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 class="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">
+                Suivi des Diacres
+              </h1>
+              <!-- Badge Live Sync -->
+              <button
+                onclick="openLiveModal()"
+                id="liveStatusBtn"
+                class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition btn-tap"
+                title="Configurer le partage en direct avec un collègue"
+              >
+                <span id="liveDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="liveStatusText">Live • Salle MESSE-25102026</span>
+                <i data-lucide="users" class="w-3 h-3 ml-0.5"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 font-medium">
+              Saint Moïse & Saint Samuel • <span id="currentDateLabel">Dimanche 25/10/2026</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <input
+            type="date"
+            id="massDateInput"
+            value="2026-10-25"
+            class="text-xs sm:text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+            title="Changer la date génère automatiquement une nouvelle salle pour cette messe"
+          />
+          <button
+            onclick="openPdfModal()"
+            class="btn-tap flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-xs sm:text-sm px-3 py-2 rounded-xl transition"
+            title="Importer une liste PDF de diacres (avec déduplication)"
+          >
+            <i data-lucide="file-up" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Importer PDF</span>
+            <span class="sm:hidden">PDF</span>
+          </button>
+          <button
+            onclick="openAddModal()"
+            class="btn-tap flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs sm:text-sm px-3 py-2 rounded-xl shadow-sm transition"
+          >
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Ajouter un diacre</span>
+            <span class="sm:hidden">Ajouter</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Pills -->
+      <div class="grid grid-cols-4 gap-2 mb-3">
+        <div class="bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between">
+          <span class="text-[11px] sm:text-xs text-slate-500 font-medium">Diacres</span>
+          <span id="statTotalDeacons" class="text-xs sm:text-sm font-bold text-slate-800">0</span>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between">
+          <span class="text-[11px] sm:text-xs text-emerald-700 font-medium">Bons pts</span>
+          <span id="statTotalGood" class="text-xs sm:text-sm font-bold text-emerald-700">+0</span>
+        </div>
+        <div class="bg-rose-50 border border-rose-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between">
+          <span class="text-[11px] sm:text-xs text-rose-700 font-medium">Mauvais</span>
+          <span id="statTotalBad" class="text-xs sm:text-sm font-bold text-rose-700">-0</span>
+        </div>
+        <div class="bg-amber-50 border border-amber-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between">
+          <span class="text-[11px] sm:text-xs text-amber-800 font-medium">Notés</span>
+          <span id="statActiveCount" class="text-xs sm:text-sm font-bold text-amber-800">0</span>
+        </div>
+      </div>
+
+      <!-- Search + Filters Row -->
+      <div class="flex flex-col sm:flex-row gap-2">
+        <!-- Search Bar -->
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Rechercher un prénom, un nom ou une classe..."
+            class="w-full pl-9 pr-9 py-2 bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+          />
+          <button
+            id="clearSearchBtn"
+            onclick="clearSearch()"
+            class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+            title="Effacer la recherche"
+          >
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Filter Pills -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 no-scrollbar">
+          <button
+            onclick="setClassFilter('ALL')"
+            id="filterBtn-ALL"
+            class="filter-pill shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border transition bg-slate-900 text-white border-slate-900"
+          >
+            Toutes les classes
+          </button>
+          <div id="dynamicClassFilters" class="flex items-center gap-1.5"></div>
+          <button
+            onclick="toggleOnlyEvaluated()"
+            id="filterEvaluatedBtn"
+            class="shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition flex items-center gap-1"
+            title="Afficher uniquement les diacres ayant des points ou une remarque"
+          >
+            <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+            <span>Notés seulement</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT: GROUPED BY CLASS -->
+  <main class="max-w-5xl mx-auto px-3 sm:px-6 pt-4">
+    <div id="classesContainer" class="space-y-6"></div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="hidden bg-white rounded-2xl border border-slate-200 p-10 text-center my-6">
+      <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="user-x" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-base font-bold text-slate-800 mb-1">Aucun diacre trouvé</h3>
+      <p class="text-xs text-slate-500 mb-4">Aucun diacre ne correspond à votre recherche ou au filtre sélectionné.</p>
+      <div class="flex items-center justify-center gap-2">
+        <button
+          onclick="resetFilters()"
+          class="text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition"
+        >
+          Réinitialiser les filtres
+        </button>
+        <button
+          onclick="openAddModalWithSearch()"
+          class="text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5"
+        >
+          <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+          Ajouter ce diacre à la volée
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- FLOATING BOTTOM BAR -->
+  <div class="fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg">
+    <div class="max-w-5xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 text-xs text-slate-600">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span id="saveStatusText" class="font-medium">Sauvegarde locale + Live actifs</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          onclick="openResetModal()"
+          class="btn-tap text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl transition flex items-center gap-1.5"
+          title="Remettre uniquement les notes et commentaires à zéro (conserve tous les diacres)"
+        >
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+          <span>Remettre à zéro</span>
+        </button>
+
+        <button
+          onclick="openSummaryModal()"
+          class="btn-tap text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5"
+        >
+          <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+          <span>Bilan / WhatsApp</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LIVE COLLABORATION / PARTAGE EN DIRECT -->
+  <div id="liveModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <i data-lucide="radio" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Partage en Direct (Multi-Collègues)</h2>
+            <p class="text-xs text-slate-500">Prenez des notes ensemble pendant la messe en temps réel</p>
+          </div>
+        </div>
+        <button onclick="closeLiveModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-900 space-y-1">
+        <div class="font-bold flex items-center gap-1.5">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+          <span>Comment ça marche :</span>
+        </div>
+        <p class="text-emerald-800 leading-relaxed">
+          1. Vos notes et commentaires sont <strong>toujours sauvegardés dans le <code class="bg-white/80 px-1 rounded">localStorage</code></strong> de votre téléphone (aucune perte si vous rafraîchissez la page).<br>
+          2. Quand vous changez la <strong>date de la messe</strong> en haut, une nouvelle salle dédiée à cette date est créée automatiquement.<br>
+          3. Tout collègue ayant sélectionné la même date (ou le même code de salle) voit vos <strong>+1</strong>, <strong>-1</strong> et <strong>remarques</strong> en direct !
+        </p>
+      </div>
+
+      <form id="liveConfigForm" onsubmit="handleSaveLiveConfig(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Votre prénom (pour que votre collègue voie qui a noté)</label>
+          <input
+            type="text"
+            id="liveAuthorInput"
+            placeholder="Ex: Mina, Responsable 1..."
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Code de la Salle partagée (lié automatiquement à la date)</label>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              id="liveRoomInput"
+              required
+              placeholder="Ex: MESSE-25102026"
+              class="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <button
+              type="button"
+              onclick="copyRoomCode()"
+              class="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1"
+              title="Copier le code de salle"
+            >
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>Copier</span>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Astuce : changer la date en haut de l'écran génère automatiquement un nouveau code <code class="font-mono">MESSE-JJMMAAAA</code>.
+          </p>
+        </div>
+
+        <!-- Dernière activité live reçue -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span id="liveModalLastSync" class="text-slate-600 font-medium">Synchronisation temps réel active</span>
+          </div>
+          <button
+            type="button"
+            onclick="broadcastFullStateNow()"
+            class="text-indigo-600 hover:text-indigo-800 font-semibold underline"
+          >
+            Forcer l'envoi de ma liste
+          </button>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onclick="closeLiveModal()"
+            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+          >
+            Fermer
+          </button>
+          <button
+            type="submit"
+            class="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition flex items-center gap-1.5"
+          >
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Rejoindre / Enregistrer</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD DEACON ON THE FLY -->
+  <div id="addModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+          </div>
+          <h2 class="text-base font-bold text-slate-900">Ajouter un diacre à la volée</h2>
+        </div>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="addDeaconForm" onsubmit="handleAddDeacon(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Prénom *</label>
+          <input
+            type="text"
+            id="newFirstName"
+            required
+            placeholder="Ex: Kirellos"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Nom *</label>
+          <input
+            type="text"
+            id="newLastName"
+            required
+            placeholder="Ex: MANSOUR"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm uppercase focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Classe *</label>
+          <select
+            id="newClassSelect"
+            onchange="toggleCustomClassInput()"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <option value="Collège 1 - 6ème">Collège 1 - 6ème</option>
+            <option value="Collège 2 - 5ème">Collège 2 - 5ème</option>
+            <option value="Collège 3 - 4ème/3ème" selected>Collège 3 - 4ème/3ème</option>
+            <option value="Autre / Invité">Autre / Invité</option>
+            <option value="__CUSTOM__">+ Créer une nouvelle classe...</option>
+          </select>
+        </div>
+
+        <div id="customClassWrapper" class="hidden">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Nom de la nouvelle classe *</label>
+          <input
+            type="text"
+            id="newCustomClass"
+            placeholder="Ex: Collège Specifique"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onclick="closeAddModal()"
+            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            class="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-sm transition flex items-center gap-1.5"
+          >
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Ajouter à la liste</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORT PDF EN LOT AVEC DEDUPLICATION -->
+  <div id="pdfModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <i data-lucide="file-up" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Importer un fichier PDF de diacres</h2>
+            <p class="text-xs text-slate-500">Ajout en lot avec déduplication automatique (sans doublons)</p>
+          </div>
+        </div>
+        <button onclick="closePdfModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <!-- Option d'exclusion Primaire & Lycée -->
+        <label class="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            id="pdfExcludePrimaireLycee"
+            checked
+            class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+          />
+          <span class="text-xs font-medium text-slate-700">
+            Ignorer automatiquement les classes <strong>Primaire</strong> et <strong>Lycée</strong> lors de l'import
+          </span>
+        </label>
+
+        <!-- Dropzone / File Input -->
+        <label
+          for="pdfFileInput"
+          class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/70 hover:bg-indigo-50/30 rounded-2xl p-6 cursor-pointer transition text-center"
+        >
+          <i data-lucide="upload-cloud" class="w-8 h-8 text-indigo-500 mb-2"></i>
+          <span class="text-xs sm:text-sm font-bold text-slate-800">Cliquez pour sélectionner un fichier PDF</span>
+          <span class="text-[11px] text-slate-500 mt-0.5">Format attendu : Liste des membres (Nom, Prénom, Classes caté.)</span>
+          <input
+            type="file"
+            id="pdfFileInput"
+            accept="application/pdf,.pdf"
+            class="hidden"
+            onchange="handlePdfFileSelected(event)"
+          />
+        </label>
+
+        <!-- Résultat d'analyse du PDF -->
+        <div id="pdfParseStatus" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs space-y-2">
+          <div id="pdfStatusHeader" class="font-bold text-slate-800 flex items-center gap-1.5"></div>
+          <div id="pdfStatusStats" class="grid grid-cols-3 gap-2 pt-1"></div>
+          <div id="pdfPreviewList" class="max-h-40 overflow-y-auto space-y-1 pt-2 border-t border-slate-200/80"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+        <button
+          type="button"
+          onclick="closePdfModal()"
+          class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+        >
+          Fermer
+        </button>
+        <button
+          type="button"
+          id="confirmPdfImportBtn"
+          onclick="confirmPdfBatchImport()"
+          disabled
+          class="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:pointer-events-none rounded-xl shadow-sm transition flex items-center gap-1.5"
+        >
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Importer les nouveaux diacres</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SUMMARY / EXPORT -->
+  <div id="summaryModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl border border-slate-100 flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <i data-lucide="clipboard-check" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Bilan de la messe</h2>
+            <p class="text-xs text-slate-500">Prêt à être copié et partagé aux responsables</p>
+          </div>
+        </div>
+        <button onclick="closeSummaryModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <textarea
+        id="summaryTextarea"
+        readonly
+        class="w-full flex-1 min-h-[240px] p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none resize-none"
+      ></textarea>
+
+      <div class="pt-3 flex items-center justify-between gap-2">
+        <span id="copyFeedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition">
+          ✓ Copié dans le presse-papier !
+        </span>
+        <div class="flex items-center gap-2">
+          <button
+            onclick="closeSummaryModal()"
+            class="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+          >
+            Fermer
+          </button>
+          <button
+            onclick="copySummaryText()"
+            class="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition flex items-center gap-1.5"
+          >
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>Copier le bilan</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RESET CONFIRMATION -->
+  <div id="resetModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-100">
+      <div class="flex items-center gap-2.5 mb-2">
+        <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <h2 class="text-base font-bold text-slate-900">Remettre les notes à zéro ?</h2>
+      </div>
+      <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+        Tous les compteurs de bons points (+1), mauvais points (-1) et les remarques de cette messe seront remis à zéro. <strong>La liste complète des diacres (y compris ceux ajoutés à la volée ou par PDF) sera intégralement conservée.</strong>
+      </p>
+      <div class="flex items-center justify-end gap-2">
+        <button
+          onclick="closeResetModal()"
+          class="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+        >
+          Annuler
+        </button>
+        <button
+          onclick="confirmResetScores()"
+          class="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm transition"
+        >
+          Oui, remettre à zéro
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION LIVE -->
+  <div id="liveToast" class="fixed top-20 right-4 z-40 hidden items-center gap-2 bg-slate-900/95 text-white text-xs font-medium px-3.5 py-2 rounded-xl shadow-lg border border-slate-700 transition-all">
+    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+    <span id="liveToastText">Mise à jour reçue</span>
+  </div>
+
+  <script>
+    // Configuration du worker PDF.js
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // ============================================================================
+    // 1. LISTE INITIALE DES DIACRES EXTRAITE DU PDF (UNIQUEMENT COLLÈGE : 34 DIACRES)
+    // ============================================================================
+    const INITIAL_DEACONS = [
+      // Collège 1 - 6ème (9 diacres)
+      { id: "d-1",  firstName: "Cyril",      lastName: "ABDELMASIH",    className: "Collège 1 - 6ème" },
+      { id: "d-2",  firstName: "Karas",      lastName: "AMIN",          className: "Collège 1 - 6ème" },
+      { id: "d-6",  firstName: "Shenouda",   lastName: "ELYAS",         className: "Collège 1 - 6ème" },
+      { id: "d-12", firstName: "Antoine",    lastName: "FERREIRA ISSA", className: "Collège 1 - 6ème" },
+      { id: "d-13", firstName: "Alex",       lastName: "GABER",         className: "Collège 1 - 6ème" },
+      { id: "d-14", firstName: "Grégoire",   lastName: "GAD",           className: "Collège 1 - 6ème" },
+      { id: "d-23", firstName: "Karas",      lastName: "KHALEEL",       className: "Collège 1 - 6ème" },
+      { id: "d-33", firstName: "Antonuos",   lastName: "NASIM",         className: "Collège 1 - 6ème" },
+      { id: "d-35", firstName: "Maikel",     lastName: "SHEHATA",       className: "Collège 1 - 6ème" },
+
+      // Collège 2 - 5ème (5 diacres)
+      { id: "d-11", firstName: "Karas",      lastName: "FAWZY MARZOUK", className: "Collège 2 - 5ème" },
+      { id: "d-26", firstName: "Giorgio",    lastName: "MANSOUR",       className: "Collège 2 - 5ème" },
+      { id: "d-29", firstName: "Edward",     lastName: "MEKHAIL",       className: "Collège 2 - 5ème" },
+      { id: "d-30", firstName: "Karas",      lastName: "MEKHAIL",       className: "Collège 2 - 5ème" },
+      { id: "d-41", firstName: "Karas",      lastName: "YAKOUP",        className: "Collège 2 - 5ème" },
+
+      // Collège 3 - 4ème/3ème (20 diacres)
+      { id: "d-3",  firstName: "Krestoufar", lastName: "AWAD",          className: "Collège 3 - 4ème/3ème" },
+      { id: "d-4",  firstName: "Etienne",    lastName: "AZIZ ESHAK",    className: "Collège 3 - 4ème/3ème" },
+      { id: "d-5",  firstName: "Karas",      lastName: "EISSA",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-7",  firstName: "Mikael",     lastName: "ESKAROUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-8",  firstName: "Raphaël",    lastName: "ESKAROUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-9",  firstName: "Johnny",     lastName: "FAHMI",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-10", firstName: "Ebram",      lastName: "FARAG",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-15", firstName: "Beshoy",     lastName: "GHALY",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-16", firstName: "Charles",    lastName: "GIRGIS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-19", firstName: "Ramir",      lastName: "ISHAK",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-20", firstName: "Andraous",   lastName: "KAMEL",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-22", firstName: "Johnny",     lastName: "KAMEL",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-24", firstName: "Keroles",    lastName: "KHALEEL",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-25", firstName: "Karas",      lastName: "MALTY",         className: "Collège 3 - 4ème/3ème" },
+      { id: "d-27", firstName: "Mickael",    lastName: "MANSOUR",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-28", firstName: "Boula",      lastName: "MAXIMOUS",      className: "Collège 3 - 4ème/3ème" },
+      { id: "d-31", firstName: "Karas",      lastName: "MIKHAEL",       className: "Collège 3 - 4ème/3ème" },
+      { id: "d-37", firstName: "Karas",      lastName: "TADROS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-38", firstName: "Timothée",   lastName: "TADROS",        className: "Collège 3 - 4ème/3ème" },
+      { id: "d-42", firstName: "Ebram",      lastName: "ZAKI",          className: "Collège 3 - 4ème/3ème" }
+    ];
+
+    const CLASS_ORDER = [
+      "Collège 1 - 6ème",
+      "Collège 2 - 5ème",
+      "Collège 3 - 4ème/3ème",
+      "Autre / Invité"
+    ];
+
+    const QUICK_TAGS = [
+      { label: "✨ Exemplaire", type: "good" },
+      { label: "📖 Lecture", type: "good" },
+      { label: "🎵 Chant", type: "good" },
+      { label: "🗣️ Bavardage", type: "bad" },
+      { label: "⏰ Retard", type: "bad" },
+      { label: "📱 Distraction", type: "bad" }
+    ];
+
+    // Clés LocalStorage
+    const STORAGE_KEY_BASE = "diacres_st_moise_samuel_v2";
+    const LIVE_CONFIG_KEY = "diacres_live_config_v1";
+
+    // Identifiant unique de cet onglet/appareil pour éviter l'écho
+    const CLIENT_ID = "client-" + Math.random().toString(36).substring(2, 10);
+
+    // State de l'application
+    let state = {
+      massDate: "2026-10-25",
+      searchQuery: "",
+      selectedClass: "ALL",
+      onlyEvaluated: false,
+      collapsedClasses: {},
+      deacons: []
+    };
+
+    // État du partage Live (Gun.js)
+    let liveConfig = {
+      roomCode: "MESSE-25102026",
+      authorName: ""
+    };
+    let gun = null;
+    let roomNode = null;
+    let remarkSyncTimers = {};
+    let pendingPdfCandidates = [];
+
+    // ============================================================================
+    // 2. GESTION DES DATES & SALLES AUTOMATIQUES PAR DATE
+    // ============================================================================
+    function generateRoomCodeFromDate(dateStr) {
+      if (!dateStr || !dateStr.includes("-")) return "MESSE-25102026";
+      const [yyyy, mm, dd] = dateStr.split("-");
+      return `MESSE-${dd}${mm}${yyyy}`;
+    }
+
+    function getStorageKeyForDate(dateStr) {
+      return `${STORAGE_KEY_BASE}_${dateStr || "2026-10-25"}`;
+    }
+
+    function normalizeIdentityKey(firstName, lastName) {
+      const clean = (s) =>
+        (s || "")
+          .toString()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "");
+      return `${clean(lastName)}_${clean(firstName)}`;
+    }
+
+    function isPrimaireOrLycee(className) {
+      const norm = (className || "").toLowerCase();
+      return norm.includes("primaire") || norm.includes("cm1") || norm.includes("cm2") || norm.includes("lycée") || norm.includes("lycee");
+    }
+
+    // Charge le roster de base (pour conserver les diacres ajoutés à la volée ou par PDF d'une date à l'autre)
+    function getBaseRoster() {
+      try {
+        const savedRosterRaw = localStorage.getItem(`${STORAGE_KEY_BASE}_roster`);
+        if (savedRosterRaw) {
+          const parsed = JSON.parse(savedRosterRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map(d => ({
+              id: d.id,
+              firstName: d.firstName,
+              lastName: d.lastName,
+              className: d.className,
+              good: 0,
+              bad: 0,
+              remark: "",
+              updatedAt: 0,
+              updatedBy: ""
+            }));
+          }
+        }
+      } catch (e) {}
+
+      return INITIAL_DEACONS.map(d => ({
+        ...d,
+        good: 0,
+        bad: 0,
+        remark: "",
+        updatedAt: 0,
+        updatedBy: ""
+      }));
+    }
+
+    function saveBaseRoster() {
+      try {
+        const rosterOnly = state.deacons.map(d => ({
+          id: d.id,
+          firstName: d.firstName,
+          lastName: d.lastName,
+          className: d.className
+        }));
+        localStorage.setItem(`${STORAGE_KEY_BASE}_roster`, JSON.stringify(rosterOnly));
+      } catch (e) {}
+    }
+
+    function loadStateForDate(dateStr, customRoomOverride) {
+      const targetDate = dateStr || "2026-10-25";
+      state.massDate = targetDate;
+
+      // 1. Charge la config auteur
+      try {
+        const rawLive = localStorage.getItem(LIVE_CONFIG_KEY);
+        if (rawLive) {
+          const parsedLive = JSON.parse(rawLive);
+          if (parsedLive.authorName) liveConfig.authorName = parsedLive.authorName;
+        }
+      } catch (e) {}
+
+      // 2. Génère automatiquement le code de salle correspondant à la date (sauf override manuel)
+      liveConfig.roomCode = customRoomOverride
+        ? customRoomOverride.trim().toUpperCase()
+        : generateRoomCodeFromDate(targetDate);
+
+      // 3. Charge les notes de cette date depuis le localStorage (ou rétrocompatibilité v2)
+      let loadedDeacons = null;
+      try {
+        const dateKey = getStorageKeyForDate(targetDate);
+        let raw = localStorage.getItem(dateKey);
+
+        // Si c'est le 25/10/2026 et que la clé par date n'existe pas encore, récupérer l'ancienne clé globale
+        if (!raw && targetDate === "2026-10-25") {
+          raw = localStorage.getItem(STORAGE_KEY_BASE);
+        }
+
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.deacons) && parsed.deacons.length > 0) {
+            const seen = new Set();
+            loadedDeacons = [];
+            parsed.deacons.forEach(d => {
+              if (isPrimaireOrLycee(d.className)) return;
+              const key = normalizeIdentityKey(d.firstName, d.lastName);
+              if (!seen.has(key)) {
+                seen.add(key);
+                loadedDeacons.push({
+                  ...d,
+                  good: Number(d.good) || 0,
+                  bad: Number(d.bad) || 0,
+                  remark: d.remark || "",
+                  updatedAt: d.updatedAt || 0,
+                  updatedBy: d.updatedBy || ""
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Erreur lecture localStorage:", e);
+      }
+
+      if (loadedDeacons && loadedDeacons.length > 0) {
+        // S'assurer que tout nouveau diacre ajouté au roster global est aussi présent
+        const baseRoster = getBaseRoster();
+        const existingKeys = new Set(loadedDeacons.map(d => normalizeIdentityKey(d.firstName, d.lastName)));
+        baseRoster.forEach(ro => {
+          const k = normalizeIdentityKey(ro.firstName, ro.lastName);
+          if (!existingKeys.has(k) && !isPrimaireOrLycee(ro.className)) {
+            loadedDeacons.push(ro);
+          }
+        });
+        state.deacons = loadedDeacons;
+      } else {
+        // Nouvelle date vierge : tous les diacres du roster avec compteurs à 0
+        state.deacons = getBaseRoster();
+      }
+
+      const dateInput = document.getElementById("massDateInput");
+      if (dateInput) dateInput.value = state.massDate;
+      updateDateLabel(state.massDate);
+      saveStateToLocalStorage();
+    }
+
+    function saveStateToLocalStorage() {
+      try {
+        const payload = JSON.stringify({
+          massDate: state.massDate,
+          roomCode: liveConfig.roomCode,
+          deacons: state.deacons
+        });
+        // Sauvegarde dédiée à la date sélectionnée
+        localStorage.setItem(getStorageKeyForDate(state.massDate), payload);
+        // Maintien de la clé principale pour récupération immédiate au rafraîchissement
+        localStorage.setItem(STORAGE_KEY_BASE, payload);
+        localStorage.setItem(`${STORAGE_KEY_BASE}_last_date`, state.massDate);
+        saveBaseRoster();
+
+        const statusEl = document.getElementById("saveStatusText");
+        if (statusEl) {
+          statusEl.textContent = `Sauvegardé (localStorage) + Live (${liveConfig.roomCode})`;
+        }
+      } catch (e) {
+        console.warn("Impossible de sauvegarder dans localStorage:", e);
+      }
+    }
+
+    function saveLiveConfig() {
+      try {
+        localStorage.setItem(LIVE_CONFIG_KEY, JSON.stringify(liveConfig));
+      } catch (e) {}
+    }
+
+    // ============================================================================
+    // 3. SYNCHRONISATION TEMPS RÉEL (GUN.JS) ENTRE COLLÈGUES
+    // ============================================================================
+    function initLiveSync() {
+      try {
+        if (!window.Gun) return;
+        if (!gun) {
+          gun = Gun({
+            peers: [
+              'https://gun-manhattan.herokuapp.com/gun',
+              'https://peer.wallie.io/gun',
+              'https://gundb-relay-mlccl.ondigitalocean.app/gun'
+            ],
+            localStorage: false
+          });
+        }
+
+        const cleanRoom = (liveConfig.roomCode || generateRoomCodeFromDate(state.massDate))
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9-_]/g, "");
+        liveConfig.roomCode = cleanRoom || generateRoomCodeFromDate(state.massDate);
+
+        updateLiveBadgeUI();
+
+        // Désabonnement propre de l'ancienne salle avant d'écouter la nouvelle
+        if (roomNode && typeof roomNode.off === "function") {
+          try { roomNode.off(); } catch (e) {}
+        }
+
+        roomNode = gun.get("st_moise_samuel_diacres_2026_rooms").get(liveConfig.roomCode);
+
+        // Écoute en direct chaque diacre modifié par un collègue dans cette salle
+        roomNode.get("deacons").map().on((data, key) => {
+          if (!data || typeof data !== "object") return;
+          if (data. deleted) return;
+          handleIncomingRemoteDeacon(data);
+        });
+      } catch (err) {
+        console.warn("Erreur initLiveSync:", err);
+      }
+    }
+
+    function pushDeaconToLive(deacon) {
+      if (!roomNode || !deacon) return;
+      try {
+        const identityKey = normalizeIdentityKey(deacon.firstName, deacon.lastName);
+        deacon.updatedAt = Date.now();
+        deacon.updatedBy = liveConfig.authorName || "Collègue";
+
+        roomNode.get("deacons").get(identityKey).put({
+          id: deacon.id,
+          identityKey: identityKey,
+          firstName: deacon.firstName,
+          lastName: deacon.lastName,
+          className: deacon.className,
+          good: Number(deacon.good) || 0,
+          bad: Number(deacon.bad) || 0,
+          remark: deacon.remark || "",
+          updatedAt: deacon.updatedAt,
+          updatedBy: deacon.updatedBy,
+          clientId: CLIENT_ID,
+          massDate: state.massDate
+        });
+      } catch (e) {
+        console.warn("Erreur pushDeaconToLive:", e);
+      }
+    }
+
+    function broadcastFullStateNow() {
+      if (!roomNode) return;
+      state.deacons.forEach(d => pushDeaconToLive(d));
+      showLiveToast(`Liste synchronisée sur la salle ${liveConfig.roomCode}`);
+    }
+
+    function handleIncomingRemoteDeacon(remote) {
+      // Ignorer nos propres messages renvoyés par le relais
+      if (remote.clientId === CLIENT_ID) return;
+      if (!remote.firstName || !remote.lastName) return;
+      if (isPrimaireOrLycee(remote.className)) return;
+
+      const remoteKey = normalizeIdentityKey(remote.firstName, remote.lastName);
+      const localDeacon = state.deacons.find(
+        d => normalizeIdentityKey(d.firstName, d.lastName) === remoteKey
+      );
+
+      if (!localDeacon) {
+        // Nouveau diacre ajouté à la volée ou via PDF par le collègue
+        const newDeacon = {
+          id: remote.id || ("d-remote-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6)),
+          firstName: remote.firstName,
+          lastName: remote.lastName,
+          className: remote.className || "Collège 3 - 4ème/3ème",
+          good: Number(remote.good) || 0,
+          bad: Number(remote.bad) || 0,
+          remark: remote.remark || "",
+          updatedAt: Number(remote.updatedAt) || Date.now(),
+          updatedBy: remote.updatedBy || "Collègue"
+        };
+        state.deacons.push(newDeacon);
+        saveStateToLocalStorage();
+        renderAll();
+        showLiveToast(`${newDeacon.firstName} ${newDeacon.lastName} ajouté par ${newDeacon.updatedBy}`);
+        return;
+      }
+
+      // Vérifie si la donnée entrante est plus récente ou différente
+      const remoteTime = Number(remote.updatedAt) || 0;
+      const localTime = Number(localDeacon.updatedAt) || 0;
+
+      const hasChanged =
+        Number(remote.good) !== Number(localDeacon.good) ||
+        Number(remote.bad) !== Number(localDeacon.bad) ||
+        (remote.remark || "") !== (localDeacon.remark || "");
+
+      if (!hasChanged) return;
+      if (localTime > 0 && remoteTime < localTime) return;
+
+      localDeacon.good = Number(remote.good) || 0;
+      localDeacon.bad = Number(remote.bad) || 0;
+      localDeacon.remark = remote.remark || "";
+      localDeacon.updatedAt = remoteTime || Date.now();
+      localDeacon.updatedBy = remote.updatedBy || "Collègue";
+
+      saveStateToLocalStorage();
+      updateDeaconRowDOM(localDeacon, true);
+      updateKPIs();
+      showLiveToast(`Mis à jour par ${localDeacon.updatedBy} : ${localDeacon.firstName} ${localDeacon.lastName}`);
+    }
+
+    function updateDeaconRowDOM(deacon, highlight = false) {
+      const row = document.getElementById(`deacon-row-${deacon.id}`);
+      if (!row) {
+        renderAll();
+        return;
+      }
+
+      const activeInput = document.activeElement;
+      const remarkInput = document.getElementById(`remark-input-${deacon.id}`);
+      if (remarkInput && activeInput !== remarkInput) {
+        remarkInput.value = deacon.remark || "";
+      }
+
+      renderAll();
+
+      if (highlight) {
+        setTimeout(() => {
+          const updatedRow = document.getElementById(`deacon-row-${deacon.id}`);
+          if (updatedRow) {
+            updatedRow.classList.add("remote-updated");
+            setTimeout(() => updatedRow.classList.remove("remote-updated"), 1400);
+          }
+        }, 30);
+      }
+    }
+
+    let toastTimeout = null;
+    function showLiveToast(message) {
+      const toast = document.getElementById("liveToast");
+      const text = document.getElementById("liveToastText");
+      if (!toast || !text) return;
+      text.textContent = message;
+      toast.classList.remove("hidden");
+      toast.classList.add("flex");
+
+      const modalSync = document.getElementById("liveModalLastSync");
+      if (modalSync) modalSync.textContent = message;
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add("hidden");
+        toast.classList.remove("flex");
+      }, 2600);
+    }
+
+    function updateLiveBadgeUI() {
+      const txt = document.getElementById("liveStatusText");
+      if (txt) {
+        txt.textContent = `Live • Salle ${liveConfig.roomCode}`;
+      }
+    }
+
+    // ============================================================================
+    // 4. DATE & HELPERS
+    // ============================================================================
+    function updateDateLabel(dateStr) {
+      if (!dateStr) return;
+      try {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        const formatted = dateObj.toLocaleDateString("fr-FR", {
+          weekday: "long",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        });
+        const capitalized = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+        document.getElementById("currentDateLabel").textContent = capitalized;
+      } catch (e) {
+        document.getElementById("currentDateLabel").textContent = dateStr;
+      }
+    }
+
+    function getOrderedClasses() {
+      const presentSet = new Set(state.deacons.map(d => d.className));
+      const ordered = [];
+      CLASS_ORDER.forEach(c => {
+        if (presentSet.has(c)) {
+          ordered.push(c);
+          presentSet.delete(c);
+        }
+      });
+      Array.from(presentSet).sort().forEach(c => ordered.push(c));
+      return ordered;
+    }
+
+    function normalizeSearchText(str) {
+      return (str || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    // ============================================================================
+    // 5. ACTIONS UTILISATEUR (+1, -1, REMARQUES, FILTRES)
+    // ============================================================================
+    function changeScore(deaconId, type, delta) {
+      const deacon = state.deacons.find(d => d.id === deaconId);
+      if (!deacon) return;
+
+      if (type === "good") {
+        deacon.good = Math.max(0, (deacon.good || 0) + delta);
+      } else if (type === "bad") {
+        deacon.bad = Math.max(0, (deacon.bad || 0) + delta);
+      }
+
+      saveStateToLocalStorage();
+      pushDeaconToLive(deacon);
+      renderAll();
+    }
+
+    function updateRemark(deaconId, value) {
+      const deacon = state.deacons.find(d => d.id === deaconId);
+      if (!deacon) return;
+      deacon.remark = value;
+      saveStateToLocalStorage();
+      updateKPIs();
+
+      clearTimeout(remarkSyncTimers[deaconId]);
+      remarkSyncTimers[deaconId] = setTimeout(() => {
+        pushDeaconToLive(deacon);
+      }, 350);
+    }
+
+    function appendQuickTag(deaconId, tagText) {
+      const deacon = state.deacons.find(d => d.id === deaconId);
+      if (!deacon) return;
+
+      const current = (deacon.remark || "").trim();
+      if (current.includes(tagText)) {
+        deacon.remark = current
+          .replace(tagText, "")
+          .replace(/\s*•\s*•\s*/g, " • ")
+          .replace(/^•\s*|\s*•$/g, "")
+          .trim();
+      } else {
+        deacon.remark = current ? `${current} • ${tagText}` : tagText;
+      }
+
+      saveStateToLocalStorage();
+      pushDeaconToLive(deacon);
+      renderAll();
+    }
+
+    function toggleClassCollapse(className) {
+      state.collapsedClasses[className] = !state.collapsedClasses[className];
+      renderAll();
+    }
+
+    function setClassFilter(className) {
+      state.selectedClass = className;
+      renderAll();
+    }
+
+    function toggleOnlyEvaluated() {
+      state.onlyEvaluated = !state.onlyEvaluated;
+      renderAll();
+    }
+
+    function clearSearch() {
+      state.searchQuery = "";
+      const input = document.getElementById("searchInput");
+      input.value = "";
+      document.getElementById("clearSearchBtn").classList.add("hidden");
+      renderAll();
+    }
+
+    function resetFilters() {
+      state.searchQuery = "";
+      state.selectedClass = "ALL";
+      state.onlyEvaluated = false;
+      document.getElementById("searchInput").value = "";
+      document.getElementById("clearSearchBtn").classList.add("hidden");
+      renderAll();
+    }
+
+    // ============================================================================
+    // 6. RENDU DOM
+    // ============================================================================
+    function updateKPIs() {
+      const totalDeacons = state.deacons.length;
+      let totalGood = 0;
+      let totalBad = 0;
+      let activeCount = 0;
+
+      state.deacons.forEach(d => {
+        totalGood += d.good || 0;
+        totalBad += d.bad || 0;
+        if ((d.good || 0) > 0 || (d.bad || 0) > 0 || (d.remark && d.remark.trim().length > 0)) {
+          activeCount++;
+        }
+      });
+
+      document.getElementById("statTotalDeacons").textContent = totalDeacons;
+      document.getElementById("statTotalGood").textContent = `+${totalGood}`;
+      document.getElementById("statTotalBad").textContent = `-${totalBad}`;
+      document.getElementById("statActiveCount").textContent = `${activeCount}/${totalDeacons}`;
+    }
+
+    function renderFilterBar() {
+      const classes = getOrderedClasses();
+      const container = document.getElementById("dynamicClassFilters");
+      const allBtn = document.getElementById("filterBtn-ALL");
+
+      if (state.selectedClass === "ALL") {
+        allBtn.className = "filter-pill shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border transition bg-slate-900 text-white border-slate-900";
+      } else {
+        allBtn.className = "filter-pill shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border transition bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
+      }
+
+      container.innerHTML = classes.map(cls => {
+        const count = state.deacons.filter(d => d.className === cls).length;
+        const isActive = state.selectedClass === cls;
+        const activeClasses = isActive
+          ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
+        return `
+          <button
+            onclick="setClassFilter('${cls.replace(/'/g, "\\'")}')"
+            class="shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${activeClasses}"
+          >
+            <span>${escapeHtml(cls)}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-amber-700 text-amber-100' : 'bg-slate-100 text-slate-500'}">${count}</span>
+          </button>
+        `;
+      }).join("");
+
+      const evalBtn = document.getElementById("filterEvaluatedBtn");
+      if (state.onlyEvaluated) {
+        evalBtn.className = "shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-600 bg-amber-50 text-amber-800 transition flex items-center gap-1";
+      } else {
+        evalBtn.className = "shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition flex items-center gap-1";
+      }
+    }
+
+    function renderClasses() {
+      const container = document.getElementById("classesContainer");
+      const emptyState = document.getElementById("emptyState");
+      const query = normalizeSearchText(state.searchQuery);
+
+      const filteredDeacons = state.deacons.filter(d => {
+        if (state.selectedClass !== "ALL" && d.className !== state.selectedClass) {
+          return false;
+        }
+        if (state.onlyEvaluated) {
+          const hasActivity = (d.good || 0) > 0 || (d.bad || 0) > 0 || (d.remark && d.remark.trim() !== "");
+          if (!hasActivity) return false;
+        }
+        if (query) {
+          const fullForward = normalizeSearchText(`${d.firstName} ${d.lastName} ${d.className} ${d.remark || ""}`);
+          const fullBackward = normalizeSearchText(`${d.lastName} ${d.firstName} ${d.className}`);
+          return fullForward.includes(query) || fullBackward.includes(query);
+        }
+        return true;
+      });
+
+      if (filteredDeacons.length === 0) {
+        container.innerHTML = "";
+        emptyState.classList.remove("hidden");
+        return;
+      }
+
+      emptyState.classList.add("hidden");
+
+      const classesOrder = getOrderedClasses();
+      const groupedHTML = [];
+
+      classesOrder.forEach(cls => {
+        const classMembers = filteredDeacons
+          .filter(d => d.className === cls)
+          .sort((a, b) => {
+            const cmpLast = a.lastName.localeCompare(b.lastName, 'fr');
+            if (cmpLast !== 0) return cmpLast;
+            return a.firstName.localeCompare(b.firstName, 'fr');
+          });
+
+        if (classMembers.length === 0) return;
+
+        const isCollapsed = !!state.collapsedClasses[cls];
+        const classGood = classMembers.reduce((acc, d) => acc + (d.good || 0), 0);
+        const classBad = classMembers.reduce((acc, d) => acc + (d.bad || 0), 0);
+
+        const cardsHTML = classMembers.map(deacon => renderDeaconCard(deacon)).join("");
+
+        groupedHTML.push(`
+          <section class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <!-- Class Group Header -->
+            <div
+              onclick="toggleClassCollapse('${cls.replace(/'/g, "\\'")}')"
+              class="bg-slate-50/90 hover:bg-slate-100/80 px-4 py-3 border-b border-slate-200/80 flex items-center justify-between cursor-pointer select-none transition"
+            >
+              <div class="flex items-center gap-2.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <h2 class="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+                  ${escapeHtml(cls)}
+                </h2>
+                <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
+                  ${classMembers.length} diacre${classMembers.length > 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5 text-xs font-bold">
+                  <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">+${classGood}</span>
+                  <span class="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700">-${classBad}</span>
+                </div>
+                <i data-lucide="${isCollapsed ? 'chevron-down' : 'chevron-up'}" class="w-4 h-4 text-slate-400"></i>
+              </div>
+            </div>
+
+            <!-- Deacon Rows -->
+            <div class="${isCollapsed ? 'hidden' : 'divide-y divide-slate-100'}">
+              ${cardsHTML}
+            </div>
+          </section>
+        `);
+      });
+
+      container.innerHTML = groupedHTML.join("");
+      lucide.createIcons();
+    }
+
+    function renderDeaconCard(deacon) {
+      const good = deacon.good || 0;
+      const bad = deacon.bad || 0;
+      const net = good - bad;
+
+      let netBadgeClass = "bg-slate-100 text-slate-600 border-slate-200";
+      let netPrefix = "";
+      if (net > 0) {
+        netBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+        netPrefix = "+";
+      } else if (net < 0) {
+        netBadgeClass = "bg-rose-50 text-rose-700 border-rose-200";
+      }
+
+      let rowHighlight = "";
+      if (good > 0 && bad === 0) rowHighlight = "bg-emerald-50/20";
+      else if (bad > 0 && good === 0) rowHighlight = "bg-rose-50/20";
+
+      const quickTagsHTML = QUICK_TAGS.map(t => {
+        const isSelected = (deacon.remark || "").includes(t.label);
+        const pillStyle = isSelected
+          ? (t.type === "good"
+              ? "bg-emerald-600 text-white border-emerald-600"
+              : "bg-rose-600 text-white border-rose-600")
+          : "bg-slate-100 hover:bg-slate-200/70 text-slate-600 border-slate-200/80";
+
+        return `
+          <button
+            type="button"
+            onclick="appendQuickTag('${deacon.id}', '${t.label}')"
+            class="btn-tap text-[11px] font-medium px-2 py-0.5 rounded-md border transition ${pillStyle}"
+          >
+            ${t.label}
+          </button>
+        `;
+      }).join("");
+
+      return `
+        <div id="deacon-row-${deacon.id}" class="p-3.5 sm:px-4 sm:py-3.5 transition ${rowHighlight}">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            
+            <!-- Identité : Prénom, Nom, Classe -->
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm sm:text-base font-bold text-slate-900">
+                  ${escapeHtml(deacon.firstName)}
+                </span>
+                <span class="text-xs sm:text-sm font-semibold text-slate-600 uppercase tracking-wide">
+                  ${escapeHtml(deacon.lastName)}
+                </span>
+                <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/70">
+                  ${escapeHtml(deacon.className)}
+                </span>
+                ${deacon.updatedBy ? `<span class="text-[10px] text-slate-400 font-medium">• noté par ${escapeHtml(deacon.updatedBy)}</span>` : ''}
+              </div>
+            </div>
+
+            <!-- Contrôles Bons / Mauvais points -->
+            <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+              
+              <!-- Compteur Bilan -->
+              <div class="flex items-center gap-1.5 mr-1">
+                <span class="text-xs font-bold px-2.5 py-1 rounded-lg border ${netBadgeClass}" title="Score net (Bons - Mauvais)">
+                  Bilan : ${netPrefix}${net}
+                </span>
+              </div>
+
+              <!-- Groupe BON POINT (+1) -->
+              <div class="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl p-0.5">
+                ${good > 0 ? `
+                  <button
+                    type="button"
+                    onclick="changeScore('${deacon.id}', 'good', -1)"
+                    class="btn-tap w-7 h-8 flex items-center justify-center text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold transition"
+                    title="Retirer 1 bon point"
+                  >
+                    -
+                  </button>
+                ` : ''}
+                <button
+                  type="button"
+                  onclick="changeScore('${deacon.id}', 'good', 1)"
+                  class="btn-tap flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-2xs transition"
+                >
+                  <i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i>
+                  <span>+1 Bon</span>
+                  <span class="ml-0.5 px-1.5 py-0.2 bg-emerald-800/60 rounded text-[11px]">${good}</span>
+                </button>
+              </div>
+
+              <!-- Groupe MAUVAIS POINT (-1) -->
+              <div class="flex items-center bg-rose-50 border border-rose-200 rounded-xl p-0.5">
+                ${bad > 0 ? `
+                  <button
+                    type="button"
+                    onclick="changeScore('${deacon.id}', 'bad', -1)"
+                    class="btn-tap w-7 h-8 flex items-center justify-center text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold transition"
+                    title="Annuler 1 mauvais point"
+                  >
+                    -
+                  </button>
+                ` : ''}
+                <button
+                  type="button"
+                  onclick="changeScore('${deacon.id}', 'bad', 1)"
+                  class="btn-tap flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-2xs transition"
+                >
+                  <i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i>
+                  <span>-1 Mauvais</span>
+                  <span class="ml-0.5 px-1.5 py-0.2 bg-rose-800/60 rounded text-[11px]">${bad}</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Section Remarque + Tags rapides -->
+          <div class="mt-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="relative flex-1">
+              <i data-lucide="message-square" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input
+                type="text"
+                id="remark-input-${deacon.id}"
+                value="${escapeHtml(deacon.remark || '')}"
+                oninput="updateRemark('${deacon.id}', this.value)"
+                placeholder="Ajouter une remarque sur le comportement pendant la messe..."
+                class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+              />
+            </div>
+
+            <!-- Tags rapides en 1 clic -->
+            <div class="flex items-center gap-1 flex-wrap">
+              ${quickTagsHTML}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAll() {
+      updateKPIs();
+      renderFilterBar();
+      renderClasses();
+    }
+
+    // ============================================================================
+    // 7. IMPORTATION PDF EN LOT AVEC DEDUPLICATION
+    // ============================================================================
+    function cleanAndNormalizeClass(rawClassText) {
+      const raw = (rawClassText || "").replace(/\s+/g, " ").trim();
+      const lower = raw.toLowerCase();
+
+      if (lower.includes("primaire") || lower.includes("cm1") || lower.includes("cm2")) {
+        return "Primaire 3 - CM1/CM2";
+      }
+      if (lower.includes("lycée") || lower.includes("lycee")) {
+        return "Lycée";
+      }
+      if (lower.includes("1-6") || lower.includes("16ème") || lower.includes("16eme") || lower.includes("6ème") || lower.includes("6eme")) {
+        return "Collège 1 - 6ème";
+      }
+      if (lower.includes("2-5") || lower.includes("25ème") || lower.includes("25eme") || lower.includes("5ème") || lower.includes("5eme")) {
+        return "Collège 2 - 5ème";
+      }
+      if (lower.includes("3-4") || lower.includes("34ème") || lower.includes("34eme") || lower.includes("4ème") || lower.includes("3ème")) {
+        return "Collège 3 - 4ème/3ème";
+      }
+      return "Collège 3 - 4ème/3ème";
+    }
+
+    function openPdfModal() {
+      pendingPdfCandidates = [];
+      document.getElementById("pdfFileInput").value = "";
+      document.getElementById("pdfParseStatus").classList.add("hidden");
+      document.getElementById("confirmPdfImportBtn").disabled = true;
+
+      const modal = document.getElementById("pdfModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+      lucide.createIcons();
+    }
+
+    function closePdfModal() {
+      const modal = document.getElementById("pdfModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    async function handlePdfFileSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const statusBox = document.getElementById("pdfParseStatus");
+      const statusHeader = document.getElementById("pdfStatusHeader");
+      const statusStats = document.getElementById("pdfStatusStats");
+      const previewList = document.getElementById("pdfPreviewList");
+      const confirmBtn = document.getElementById("confirmPdfImportBtn");
+
+      statusBox.classList.remove("hidden");
+      statusHeader.innerHTML = `<span class="text-indigo-600">Lecture et extraction du fichier PDF en cours...</span>`;
+      statusStats.innerHTML = "";
+      previewList.innerHTML = "";
+      confirmBtn.disabled = true;
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        let allItems = [];
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          textContent.items.forEach(item => {
+            const str = (item.str || "").trim();
+            if (str) {
+              allItems.push({
+                page: pageNum,
+                x: item.transform[4],
+                y: item.transform[5],
+                str
+              });
+            }
+          });
+        }
+
+        const extractedDeacons = parseDeaconsFromPdfItems(allItems);
+        const excludePrimLycee = document.getElementById("pdfExcludePrimaireLycee").checked;
+
+        const existingKeys = new Set(
+          state.deacons.map(d => normalizeIdentityKey(d.firstName, d.lastName))
+        );
+        const batchKeys = new Set();
+
+        let newCandidates = [];
+        let duplicatesCount = 0;
+        let excludedCount = 0;
+
+        extractedDeacons.forEach(cand => {
+          if (excludePrimLycee && isPrimaireOrLycee(cand.className)) {
+            excludedCount++;
+            return;
+          }
+          const key = normalizeIdentityKey(cand.firstName, cand.lastName);
+          if (existingKeys.has(key) || batchKeys.has(key)) {
+            duplicatesCount++;
+            return;
+          }
+          batchKeys.add(key);
+          newCandidates.push(cand);
+        });
+
+        pendingPdfCandidates = newCandidates;
+
+        statusHeader.innerHTML = `
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+          <span>Analyse terminée (${extractedDeacons.length} profils détectés dans le PDF)</span>
+        `;
+
+        statusStats.innerHTML = `
+          <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center">
+            <div class="text-sm font-extrabold text-emerald-700">${newCandidates.length}</div>
+            <div class="text-[10px] text-emerald-800 font-medium">Nouveaux à ajouter</div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-2 text-center">
+            <div class="text-sm font-extrabold text-amber-700">${duplicatesCount}</div>
+            <div class="text-[10px] text-amber-800 font-medium">Doublons ignorés</div>
+          </div>
+          <div class="bg-slate-100 border border-slate-200 rounded-lg p-2 text-center">
+            <div class="text-sm font-extrabold text-slate-700">${excludedCount}</div>
+            <div class="text-[10px] text-slate-600 font-medium">Primaire/Lycée filtrés</div>
+          </div>
+        `;
+
+        if (newCandidates.length > 0) {
+          previewList.innerHTML = newCandidates.map(c => `
+            <div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
+              <span class="font-semibold text-slate-800">${escapeHtml(c.firstName)} <span class="uppercase text-slate-500">${escapeHtml(c.lastName)}</span></span>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">${escapeHtml(c.className)}</span>
+            </div>
+          `).join("");
+          confirmBtn.disabled = false;
+        } else {
+          previewList.innerHTML = `
+            <div class="text-center text-slate-500 py-2">
+              Tous les diacres de ce PDF sont déjà présents dans votre liste (aucun doublon créé).
+            </div>
+          `;
+          confirmBtn.disabled = true;
+        }
+
+        lucide.createIcons();
+      } catch (err) {
+        console.error("Erreur lecture PDF:", err);
+        statusHeader.innerHTML = `<span class="text-rose-600">Erreur lors de la lecture du fichier PDF. Vérifiez qu'il s'agit d'un PDF valide.</span>`;
+      }
+    }
+
+    function parseDeaconsFromPdfItems(items) {
+      const results = [];
+      const fullStream = items.map(i => i.str);
+
+      const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+      const ignoredTokens = new Set([
+        "Liste des membres", "Nom", "Prénom", "Date naiss.", "Age", "Genre",
+        "Téléphone", "Email", "Ville", "Classes caté.", "Masculin", "Féminin"
+      ]);
+
+      for (let i = 0; i < fullStream.length; i++) {
+        const token = fullStream[i].trim();
+        if (dateRegex.test(token)) {
+          let firstName = "";
+          let lastName = "";
+
+          let backIdx = i - 1;
+          const candidatesBefore = [];
+          while (backIdx >= 0 && candidatesBefore.length < 3) {
+            const prev = fullStream[backIdx].trim();
+            if (
+              prev &&
+              !ignoredTokens.has(prev) &&
+              !prev.includes("Saint Moïse") &&
+              !prev.startsWith("Page ") &&
+              !/^\d+$/.test(prev)
+            ) {
+              candidatesBefore.unshift(prev);
+            }
+            backIdx--;
+          }
+
+          if (candidatesBefore.length >= 2) {
+            firstName = candidatesBefore[candidatesBefore.length - 1];
+            lastName = candidatesBefore[candidatesBefore.length - 2];
+          }
+
+          let rawClass = "";
+          for (let fwd = i + 1; fwd < Math.min(fullStream.length, i + 12); fwd++) {
+            const nxt = fullStream[fwd].trim();
+            if (dateRegex.test(nxt) && fwd > i + 1) break;
+            if (
+              nxt.includes("Collège") ||
+              nxt.includes("Primaire") ||
+              nxt.includes("Lycée") ||
+              nxt.includes("Diacre")
+            ) {
+              rawClass += " " + nxt;
+            }
+          }
+
+          if (firstName && lastName && rawClass) {
+            results.push({
+              firstName: firstName.trim(),
+              lastName: lastName.trim().toUpperCase(),
+              className: cleanAndNormalizeClass(rawClass)
+            });
+          }
+        }
+      }
+
+      return results;
+    }
+
+    function confirmPdfBatchImport() {
+      if (!pendingPdfCandidates || pendingPdfCandidates.length === 0) {
+        closePdfModal();
+        return;
+      }
+
+      const existingKeys = new Set(
+        state.deacons.map(d => normalizeIdentityKey(d.firstName, d.lastName))
+      );
+
+      let addedCount = 0;
+      pendingPdfCandidates.forEach(cand => {
+        const key = normalizeIdentityKey(cand.firstName, cand.lastName);
+        if (!existingKeys.has(key)) {
+          existingKeys.add(key);
+          const newDeacon = {
+            id: "d-pdf-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+            firstName: cand.firstName,
+            lastName: cand.lastName,
+            className: cand.className,
+            good: 0,
+            bad: 0,
+            remark: "",
+            updatedAt: Date.now(),
+            updatedBy: liveConfig.authorName || "Import PDF"
+          };
+          state.deacons.push(newDeacon);
+          pushDeaconToLive(newDeacon);
+          addedCount++;
+        }
+      });
+
+      pendingPdfCandidates = [];
+      saveStateToLocalStorage();
+      closePdfModal();
+      renderAll();
+      showLiveToast(`${addedCount} nouveau(x) diacre(s) importé(s) sans doublon !`);
+    }
+
+    // ============================================================================
+    // 8. MODALS : AJOUT À LA VOLÉE, LIVE CONFIG, BILAN & REMISE À ZÉRO
+    // ============================================================================
+    function openLiveModal() {
+      document.getElementById("liveAuthorInput").value = liveConfig.authorName || "";
+      document.getElementById("liveRoomInput").value = liveConfig.roomCode || generateRoomCodeFromDate(state.massDate);
+      const modal = document.getElementById("liveModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+      lucide.createIcons();
+    }
+
+    function closeLiveModal() {
+      const modal = document.getElementById("liveModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    function handleSaveLiveConfig(e) {
+      e.preventDefault();
+      const author = document.getElementById("liveAuthorInput").value.trim();
+      const room = document.getElementById("liveRoomInput").value.trim().toUpperCase();
+
+      liveConfig.authorName = author;
+      liveConfig.roomCode = room || generateRoomCodeFromDate(state.massDate);
+
+      saveLiveConfig();
+      saveStateToLocalStorage();
+      initLiveSync();
+      closeLiveModal();
+      showLiveToast(`Connecté à la salle ${liveConfig.roomCode}`);
+    }
+
+    function copyRoomCode() {
+      const input = document.getElementById("liveRoomInput");
+      if (!input) return;
+      navigator.clipboard.writeText(input.value.trim());
+      showLiveToast(`Code ${input.value.trim()} copié !`);
+    }
+
+    function openAddModal() {
+      const modal = document.getElementById("addModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+      document.getElementById("newFirstName").focus();
+    }
+
+    function openAddModalWithSearch() {
+      const q = state.searchQuery.trim();
+      openAddModal();
+      if (q) {
+        const parts = q.split(" ");
+        document.getElementById("newFirstName").value = parts[0] || "";
+        document.getElementById("newLastName").value = parts.slice(1).join(" ").toUpperCase() || "";
+      }
+    }
+
+    function closeAddModal() {
+      const modal = document.getElementById("addModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+      document.getElementById("addDeaconForm").reset();
+      document.getElementById("customClassWrapper").classList.add("hidden");
+    }
+
+    function toggleCustomClassInput() {
+      const select = document.getElementById("newClassSelect");
+      const wrapper = document.getElementById("customClassWrapper");
+      const customInput = document.getElementById("newCustomClass");
+      if (select.value === "__CUSTOM__") {
+        wrapper.classList.remove("hidden");
+        customInput.required = true;
+        customInput.focus();
+      } else {
+        wrapper.classList.add("hidden");
+        customInput.required = false;
+      }
+    }
+
+    function handleAddDeacon(event) {
+      event.preventDefault();
+      const firstName = document.getElementById("newFirstName").value.trim();
+      const lastName = document.getElementById("newLastName").value.trim().toUpperCase();
+      const selectVal = document.getElementById("newClassSelect").value;
+      const customClass = document.getElementById("newCustomClass").value.trim();
+
+      const finalClass = selectVal === "__CUSTOM__" ? (customClass || "Autre / Invité") : selectVal;
+      if (!firstName || !lastName) return;
+
+      const newKey = normalizeIdentityKey(firstName, lastName);
+      const existing = state.deacons.find(
+        d => normalizeIdentityKey(d.firstName, d.lastName) === newKey
+      );
+
+      if (existing) {
+        closeAddModal();
+        state.selectedClass = "ALL";
+        state.searchQuery = `${firstName} ${lastName}`;
+        document.getElementById("searchInput").value = state.searchQuery;
+        document.getElementById("clearSearchBtn").classList.remove("hidden");
+        renderAll();
+        showLiveToast(`${firstName} ${lastName} est déjà dans la liste`);
+        return;
+      }
+
+      const newDeacon = {
+        id: "d-custom-" + Date.now(),
+        firstName: firstName.charAt(0).toUpperCase() + firstName.slice(1),
+        lastName: lastName,
+        className: finalClass,
+        good: 0,
+        bad: 0,
+        remark: "",
+        updatedAt: Date.now(),
+        updatedBy: liveConfig.authorName || "Responsable"
+      };
+
+      state.deacons.push(newDeacon);
+      state.collapsedClasses[finalClass] = false;
+      if (state.selectedClass !== "ALL" && state.selectedClass !== finalClass) {
+        state.selectedClass = "ALL";
+      }
+
+      saveStateToLocalStorage();
+      pushDeaconToLive(newDeacon);
+      closeAddModal();
+      renderAll();
+
+      setTimeout(() => {
+        const el = document.getElementById(`deacon-row-${newDeacon.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-amber-500");
+          setTimeout(() => el.classList.remove("ring-2", "ring-amber-500"), 2200);
+        }
+      }, 100);
+    }
+
+    function openSummaryModal() {
+      const modal = document.getElementById("summaryModal");
+      const textarea = document.getElementById("summaryTextarea");
+      const dateLabel = document.getElementById("currentDateLabel").textContent;
+
+      const evaluated = state.deacons.filter(
+        d => (d.good || 0) > 0 || (d.bad || 0) > 0 || (d.remark && d.remark.trim() !== "")
+      );
+
+      let lines = [];
+      lines.push(`⛪ SUIVI DES DIACRES — SAINT MOÏSE & SAINT SAMUEL`);
+      lines.push(`📅 Messe du : ${dateLabel} (Salle : ${liveConfig.roomCode})`);
+      lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+      if (evaluated.length === 0) {
+        lines.push(`\nAucune note ou remarque enregistrée pour le moment.`);
+      } else {
+        const classes = getOrderedClasses();
+        classes.forEach(cls => {
+          const inClass = evaluated.filter(d => d.className === cls);
+          if (inClass.length === 0) return;
+
+          lines.push(`\n📌 ${cls.toUpperCase()}`);
+          inClass.forEach(d => {
+            const g = d.good || 0;
+            const b = d.bad || 0;
+            const net = g - b;
+            const netStr = net > 0 ? `+${net}` : `${net}`;
+            let scorePart = `[Bilan ${netStr} | +${g} / -${b}]`;
+            let remarkPart = d.remark && d.remark.trim() ? ` ➔ ${d.remark.trim()}` : "";
+            lines.push(`• ${d.firstName} ${d.lastName} : ${scorePart}${remarkPart}`);
+          });
+        });
+      }
+
+      textarea.value = lines.join("\n");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function closeSummaryModal() {
+      const modal = document.getElementById("summaryModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    function copySummaryText() {
+      const textarea = document.getElementById("summaryTextarea");
+      textarea.select();
+      navigator.clipboard.writeText(textarea.value);
+      const feedback = document.getElementById("copyFeedback");
+      feedback.classList.remove("opacity-0");
+      setTimeout(() => feedback.classList.add("opacity-0"), 2200);
+    }
+
+    function openResetModal() {
+      const modal = document.getElementById("resetModal");
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function closeResetModal() {
+      const modal = document.getElementById("resetModal");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    // Remet UNIQUEMENT les notes et commentaires à zéro, conserve 100% des diacres
+    function confirmResetScores() {
+      const now = Date.now();
+      state.deacons.forEach(d => {
+        d.good = 0;
+        d.bad = 0;
+        d.remark = "";
+        d.updatedAt = now;
+        d.updatedBy = liveConfig.authorName || "";
+        pushDeaconToLive(d);
+      });
+      saveStateToLocalStorage();
+      closeResetModal();
+      renderAll();
+      showLiveToast("Notes et commentaires remis à zéro (liste des diacres conservée)");
+    }
+
+    function escapeHtml(str) {
+      return (str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // ============================================================================
+    // 9. INITIALISATION AU CHARGEMENT
+    // ============================================================================
+    document.addEventListener("DOMContentLoaded", () => {
+      // Récupère la dernière date utilisée (ou 2026-10-25 par défaut)
+      let initialDate = "2026-10-25";
+      try {
+        const savedDate = localStorage.getItem(`${STORAGE_KEY_BASE}_last_date`);
+        if (savedDate) initialDate = savedDate;
+      } catch (e) {}
+
+      loadStateForDate(initialDate);
+      renderAll();
+      lucide.createIcons();
+      initLiveSync();
+
+      // Écouteur barre de recherche
+      const searchInput = document.getElementById("searchInput");
+      const clearBtn = document.getElementById("clearSearchBtn");
+      searchInput.addEventListener("input", (e) => {
+        state.searchQuery = e.target.value;
+        if (state.searchQuery.trim().length > 0) {
+          clearBtn.classList.remove("hidden");
+        } else {
+          clearBtn.classList.add("hidden");
+        }
+        renderAll();
+      });
+
+      // Écouteur changement de date : génère automatiquement la nouvelle salle dédiée à cette date
+      const dateInput = document.getElementById("massDateInput");
+      dateInput.addEventListener("change", (e) => {
+        const newDate = e.target.value;
+        if (!newDate) return;
+
+        // Bascule sur l'état de cette date et génère automatiquement le nouveau code de salle (ex: MESSE-01112026)
+        loadStateForDate(newDate);
+        saveLiveConfig();
+        initLiveSync();
+        renderAll();
+
+        showLiveToast(`Nouvelle salle activée : ${liveConfig.roomCode}`);
+      });
+    });
+  </script>
+</body>
+</html>
